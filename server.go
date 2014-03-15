@@ -85,7 +85,9 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 			version := getUint16(c)
 			log.Printf("Received hello for version %d\n", version)
 			if version == Version {
-				// TODO: Send known entries
+				for _, entry := range nt.entries {
+					nt.assignEntry(entry, rwc)
+				}
 				rwc.Write([]byte{HelloComplete})
 			} else {
 				rwc.Write([]byte{VersionUnsupported})
@@ -133,22 +135,36 @@ func (nt *NetworkTable) handleEntryAssignment(c <-chan byte, rwc net.Conn) error
 	case Boolean:
 		b := getBoolean(c)
 		log.Printf("\tValue: %t\n", b)
-		nt.entries[name] = newBooleanEntry(b, id, sequence)
-		// TODO: send to clients
+		nt.entries[name] = newBooleanEntry(name, b, id, sequence)
 	case Double:
 		d := getDouble(c)
 		log.Printf("\tValue: %f\n", d)
-		nt.entries[name] = newDoubleEntry(d, id, sequence)
-		// TODO: send to clients
+		nt.entries[name] = newDoubleEntry(name, d, id, sequence)
 	case String:
 		s := getString(c)
 		log.Printf("\tValue: %s\n", s)
-		nt.entries[name] = newStringEntry(s, id, sequence)
-		// TODO: send to clients
+		nt.entries[name] = newStringEntry(name, s, id, sequence)
 	case BooleanArray, DoubleArray, StringArray:
 		return errors.New("Error, server currently can't handle array types, closing connection.\n")
 	}
+	nt.assignEntryAll(nt.entries[name])
 	return nil
+}
+
+func (nt *NetworkTable) assignEntry(e entry, rwc net.Conn) {
+	data := e.Marshal()
+	log.Printf("Send \"%X\"", data)
+	written, err := rwc.Write(data)
+	if err != nil {
+		log.Println(err)
+	}
+	if written != len(data) {
+		log.Printf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written)
+	}
+}
+
+func (nt *NetworkTable) assignEntryAll(e entry) {
+	// TODO: implement
 }
 
 func ListenAndServe(addr string) error {
@@ -156,8 +172,8 @@ func ListenAndServe(addr string) error {
 	return nt.ListenAndServe()
 }
 
-// getUint16 returns a 16 byte unsigned number read from the channel
-// in little endian form. This may be a bug with the protocol.
+// Encoding and decoding methods
+
 func getUint16(c <-chan byte) uint16 {
 	return binary.BigEndian.Uint16([]byte{<-c, <-c})
 }
@@ -178,4 +194,32 @@ func getString(c <-chan byte) string {
 		bytes[i] = <-c
 	}
 	return string(bytes)
+}
+
+func getUint16Bytes(val uint16) []byte {
+	bytes := make([]byte, 2, 2)
+	binary.BigEndian.PutUint16(bytes, val)
+	return bytes
+}
+
+func getBooleanByte(val bool) byte {
+	if val {
+		return 0x01
+	} else {
+		return 0x00
+	}
+}
+
+func getDoubleBytes(val float64) []byte {
+	bytes := make([]byte, 8, 8)
+	bits := math.Float64bits(val)
+	binary.BigEndian.PutUint64(bytes, bits)
+	return bytes
+}
+
+func getStringBytes(val string) []byte {
+	bytes := make([]byte, 0, 2+len(val))
+	bytes = append(bytes, getUint16Bytes((uint16)(len(val)))...)
+	bytes = append(bytes, []byte(val)...)
+	return bytes
 }
