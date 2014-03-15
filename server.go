@@ -2,6 +2,7 @@ package networktables
 
 import (
 	"encoding/binary"
+	"errors"
 	"log"
 	"math"
 	"net"
@@ -101,38 +102,8 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 			return
 		case EntryAssignment:
 			log.Printf("Received entry assignment\n")
-			name, entryType, id, sequence := getString(c), <-c, getUint16(c), getUint16(c)
-			log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
-			_, exists := nt.entries[name]
-			if exists {
-				log.Printf("Warning, client requesting an already existing key, ignoring.\n")
-				continue
-			}
-			if id != ClientRequestID {
-				log.Printf("Error, assertive client trying to pick the ID it assigns, closing connection.\n")
-				done <- true
-				return
-			}
-			id, nt.nextID = nt.nextID, nt.nextID+1
-			log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
-			switch entryType {
-			case Boolean:
-				b := getBoolean(c)
-				log.Printf("\tValue: %t\n", b)
-				nt.entries[name] = newBooleanEntry(b, id, sequence)
-				// TODO: send to clients
-			case Double:
-				d := getDouble(c)
-				log.Printf("\tValue: %f\n", d)
-				nt.entries[name] = newDoubleEntry(d, id, sequence)
-				// TODO: send to clients
-			case String:
-				s := getString(c)
-				log.Printf("\tValue: %s\n", s)
-				nt.entries[name] = newStringEntry(s, id, sequence)
-				// TODO: send to clients
-			case BooleanArray, DoubleArray, StringArray:
-				log.Printf("Error, server currently can't handle array types, closing connection.\n")
+			if err := nt.handleEntryAssignment(c, rwc); err != nil {
+				log.Println(err)
 				done <- true
 				return
 			}
@@ -142,6 +113,42 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 			log.Printf("Received byte \"%X\"", b)
 		}
 	}
+}
+
+func (nt *NetworkTable) handleEntryAssignment(c <-chan byte, rwc net.Conn) error {
+	name, entryType, id, sequence := getString(c), <-c, getUint16(c), getUint16(c)
+
+	if _, exists := nt.entries[name]; exists {
+		log.Printf("Warning, client requesting an already existing key, ignoring.\n")
+		return nil
+	}
+	if id != ClientRequestID {
+		return errors.New("Error, assertive client trying to pick the ID it assigns, closing connection.")
+	}
+
+	id, nt.nextID = nt.nextID, nt.nextID+1
+	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
+
+	switch entryType {
+	case Boolean:
+		b := getBoolean(c)
+		log.Printf("\tValue: %t\n", b)
+		nt.entries[name] = newBooleanEntry(b, id, sequence)
+		// TODO: send to clients
+	case Double:
+		d := getDouble(c)
+		log.Printf("\tValue: %f\n", d)
+		nt.entries[name] = newDoubleEntry(d, id, sequence)
+		// TODO: send to clients
+	case String:
+		s := getString(c)
+		log.Printf("\tValue: %s\n", s)
+		nt.entries[name] = newStringEntry(s, id, sequence)
+		// TODO: send to clients
+	case BooleanArray, DoubleArray, StringArray:
+		return errors.New("Error, server currently can't handle array types, closing connection.\n")
+	}
+	return nil
 }
 
 func ListenAndServe(addr string) error {
