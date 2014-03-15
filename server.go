@@ -73,7 +73,9 @@ func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
 }
 
 func (nt *NetworkTable) assignEntryAll(e entry) {
-	// TODO: implement
+	for _, conn := range nt.connections {
+		nt.assignEntry(e, conn)
+	}
 }
 
 func (nt *NetworkTable) set(key string, e entry) {
