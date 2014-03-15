@@ -3,16 +3,19 @@ package networktables
 import (
 	"encoding/binary"
 	"errors"
+	"io"
 	"log"
 	"math"
 	"net"
+	"sync"
 	"time"
 )
 
 type NetworkTable struct {
-	addr    string
-	nextID  uint16
-	entries map[string]entry
+	addr        string
+	nextID      uint16
+	entries     map[string]entry
+	connections []*connection
 }
 
 func (nt *NetworkTable) ListenAndServe() error {
@@ -48,19 +51,49 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 		}
 		tempDelay = 0
 		log.Printf("Got connection\n")
-		go nt.handleConnection(rwc)
+		conn := &connection{rwc, nt, sync.Mutex{}}
+		nt.connections = append(nt.connections, conn)
+		go conn.run()
 	}
 	return nil
 }
 
-func (nt *NetworkTable) handleConnection(rwc net.Conn) {
-	defer rwc.Close()
-	log.Printf("Got new connection from %s (%s)", rwc.RemoteAddr().String(), rwc.RemoteAddr().Network())
+func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
+	data := e.Marshal()
+	log.Printf("Send \"%X\"", data)
+	written, err := w.Write(data)
+	if err != nil {
+		log.Println(err)
+	}
+	if written != len(data) {
+		log.Printf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written)
+	}
+}
+
+func (nt *NetworkTable) assignEntryAll(e entry) {
+	// TODO: implement
+}
+
+func ListenAndServe(addr string) error {
+	nt := &NetworkTable{addr, 1, make(map[string]entry), nil}
+	return nt.ListenAndServe()
+}
+
+// connection handles a single client connection
+type connection struct {
+	rwc net.Conn
+	nt  *NetworkTable
+	m   sync.Mutex
+}
+
+func (conn *connection) run() {
+	defer conn.rwc.Close()
+	log.Printf("Got new connection from %s", conn.rwc.RemoteAddr().String())
 	done, c := make(chan interface{}), make(chan byte)
-	go nt.processBytes(done, c, rwc)
+	go conn.processBytes(done, c)
 	for {
 		data := make([]byte, 2048)
-		n, err := rwc.Read(data)
+		n, err := conn.rwc.Read(data)
 		if err != nil || n < 0 {
 			log.Printf("networktables: %s\n", err)
 			return
@@ -77,7 +110,7 @@ func (nt *NetworkTable) handleConnection(rwc net.Conn) {
 	}
 }
 
-func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc net.Conn) {
+func (conn *connection) processBytes(done chan<- interface{}, c <-chan byte) {
 	for b := range c {
 		switch b {
 		case KeepAlive:
@@ -85,12 +118,12 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 			version := getUint16(c)
 			log.Printf("Received hello for version %d\n", version)
 			if version == Version {
-				for _, entry := range nt.entries {
-					nt.assignEntry(entry, rwc)
+				for _, entry := range conn.nt.entries {
+					conn.nt.assignEntry(entry, conn)
 				}
-				rwc.Write([]byte{HelloComplete})
+				conn.Write([]byte{HelloComplete})
 			} else {
-				rwc.Write([]byte{VersionUnsupported})
+				conn.Write([]byte{VersionUnsupported})
 				done <- true
 				return
 			}
@@ -104,7 +137,7 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 			return
 		case EntryAssignment:
 			log.Printf("Received entry assignment\n")
-			if err := nt.handleEntryAssignment(c, rwc); err != nil {
+			if err := conn.handleEntryAssignment(c); err != nil {
 				log.Println(err)
 				done <- true
 				return
@@ -117,10 +150,10 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 	}
 }
 
-func (nt *NetworkTable) handleEntryAssignment(c <-chan byte, rwc net.Conn) error {
+func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	name, entryType, id, sequence := getString(c), <-c, getUint16(c), getUint16(c)
 
-	if _, exists := nt.entries[name]; exists {
+	if _, exists := conn.nt.entries[name]; exists {
 		log.Printf("Warning, client requesting an already existing key, ignoring.\n")
 		return nil
 	}
@@ -128,48 +161,33 @@ func (nt *NetworkTable) handleEntryAssignment(c <-chan byte, rwc net.Conn) error
 		return errors.New("Error, assertive client trying to pick the ID it assigns, closing connection.")
 	}
 
-	id, nt.nextID = nt.nextID, nt.nextID+1
+	id, conn.nt.nextID = conn.nt.nextID, conn.nt.nextID+1
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
 
 	switch entryType {
 	case Boolean:
 		b := getBoolean(c)
 		log.Printf("\tValue: %t\n", b)
-		nt.entries[name] = newBooleanEntry(name, b, id, sequence)
+		conn.nt.entries[name] = newBooleanEntry(name, b, id, sequence)
 	case Double:
 		d := getDouble(c)
 		log.Printf("\tValue: %f\n", d)
-		nt.entries[name] = newDoubleEntry(name, d, id, sequence)
+		conn.nt.entries[name] = newDoubleEntry(name, d, id, sequence)
 	case String:
 		s := getString(c)
 		log.Printf("\tValue: %s\n", s)
-		nt.entries[name] = newStringEntry(name, s, id, sequence)
+		conn.nt.entries[name] = newStringEntry(name, s, id, sequence)
 	case BooleanArray, DoubleArray, StringArray:
 		return errors.New("Error, server currently can't handle array types, closing connection.\n")
 	}
-	nt.assignEntryAll(nt.entries[name])
+	conn.nt.assignEntryAll(conn.nt.entries[name])
 	return nil
 }
 
-func (nt *NetworkTable) assignEntry(e entry, rwc net.Conn) {
-	data := e.Marshal()
-	log.Printf("Send \"%X\"", data)
-	written, err := rwc.Write(data)
-	if err != nil {
-		log.Println(err)
-	}
-	if written != len(data) {
-		log.Printf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written)
-	}
-}
-
-func (nt *NetworkTable) assignEntryAll(e entry) {
-	// TODO: implement
-}
-
-func ListenAndServe(addr string) error {
-	nt := &NetworkTable{addr, 1, make(map[string]entry)}
-	return nt.ListenAndServe()
+func (conn *connection) Write(b []byte) (int, error) {
+	conn.m.Lock()
+	defer conn.m.Unlock()
+	return conn.rwc.Write(b)
 }
 
 // Encoding and decoding methods
