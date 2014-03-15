@@ -13,3 +13,13 @@ const (
 	EntryAssignment    = 0x10
 	EntryUpdate        = 0x11
 )
+
+// Types of data that can be sent over NetworkTables
+const (
+	Boolean      = 0x00
+	Double       = 0x01
+	String       = 0x02
+	BooleanArray = 0x10
+	DoubleArray  = 0x11
+	StringArray  = 0x12
+)
