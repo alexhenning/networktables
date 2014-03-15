@@ -1,6 +1,7 @@
 package networktables
 
 import (
+	"encoding/binary"
 	"log"
 	"net"
 	"time"
@@ -51,6 +52,57 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 func (nt *NetworkTable) handleConnection(rwc net.Conn) {
 	defer rwc.Close()
 	log.Printf("Got new connection from %s (%s)", rwc.RemoteAddr().String(), rwc.RemoteAddr().Network())
+	done, c := make(chan interface{}), make(chan byte)
+	go nt.processBytes(done, c, rwc)
+	for {
+		data := make([]byte, 2048)
+		n, err := rwc.Read(data)
+		if err != nil || n < 0 {
+			log.Printf("networktables: %s\n", err)
+			return
+		}
+		for i := 0; i < n; i++ {
+			select {
+			case c <- data[i]:
+			case <-done:
+				close(c)
+				return
+			}
+		}
+	}
+}
+
+func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc net.Conn) {
+	for b := range c {
+		switch b {
+		case KeepAlive:
+		case Hello:
+			version := binary.LittleEndian.Uint16([]byte{<-c, <-c})
+			log.Printf("Received hello for version %d\n", version)
+			if version == Version {
+				// TODO: Send known entries
+				rwc.Write([]byte{HelloComplete})
+			} else {
+				rwc.Write([]byte{VersionUnsupported})
+				done <- true
+				return
+			}
+		case VersionUnsupported:
+			log.Printf("Error, server shouldn't get VersionUnsupported message, closing connection\n")
+			done <- true
+			return
+		case HelloComplete:
+			log.Printf("Error, server shouldn't get HelloComplete message, closing connection\n")
+			done <- true
+			return
+		case EntryAssignment:
+			log.Printf("Received entry assignment\n")
+		case EntryUpdate:
+			log.Printf("Received entry update\n")
+		default:
+			log.Printf("Received byte \"%X\"", b)
+		}
+	}
 }
 
 func ListenAndServe(addr string) error {
