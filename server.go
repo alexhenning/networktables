@@ -61,7 +61,7 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 }
 
 func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
-	data := e.Marshal()
+	data := assignmentMessage(e)
 	log.Printf("Send \"%X\"", data)
 	written, err := w.Write(data)
 	if err != nil {
