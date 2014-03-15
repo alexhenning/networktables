@@ -9,7 +9,9 @@ import (
 )
 
 type NetworkTable struct {
-	addr string
+	addr    string
+	nextID  uint16
+	entries map[string]entry
 }
 
 func (nt *NetworkTable) ListenAndServe() error {
@@ -90,29 +92,47 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 				return
 			}
 		case VersionUnsupported:
-			log.Printf("Error, server shouldn't get VersionUnsupported message, closing connection\n")
+			log.Printf("Error, server shouldn't get VersionUnsupported message, closing connection.\n")
 			done <- true
 			return
 		case HelloComplete:
-			log.Printf("Error, server shouldn't get HelloComplete message, closing connection\n")
+			log.Printf("Error, server shouldn't get HelloComplete message, closing connection.\n")
 			done <- true
 			return
 		case EntryAssignment:
 			log.Printf("Received entry assignment\n")
 			name, entryType, id, sequence := getString(c), <-c, getUint16(c), getUint16(c)
-			log.Printf("Name: %s Type: %X, ID: %d, Sequence Number: %d\n", name, entryType, id, sequence)
+			log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
+			_, exists := nt.entries[name]
+			if exists {
+				log.Printf("Warning, client requesting an already existing key, ignoring.\n")
+				continue
+			}
+			if id != ClientRequestID {
+				log.Printf("Error, assertive client trying to pick the ID it assigns, closing connection.\n")
+				done <- true
+				return
+			}
+			id, nt.nextID = nt.nextID, nt.nextID+1
+			log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
 			switch entryType {
 			case Boolean:
 				b := getBoolean(c)
 				log.Printf("\tValue: %t\n", b)
+				nt.entries[name] = newBooleanEntry(b, id, sequence)
+				// TODO: send to clients
 			case Double:
-				f := getDouble(c)
-				log.Printf("\tValue: %f\n", f)
+				d := getDouble(c)
+				log.Printf("\tValue: %f\n", d)
+				nt.entries[name] = newDoubleEntry(d, id, sequence)
+				// TODO: send to clients
 			case String:
 				s := getString(c)
 				log.Printf("\tValue: %s\n", s)
+				nt.entries[name] = newStringEntry(s, id, sequence)
+				// TODO: send to clients
 			case BooleanArray, DoubleArray, StringArray:
-				log.Printf("Error, server currently can't handle array types, closing connection\n")
+				log.Printf("Error, server currently can't handle array types, closing connection.\n")
 				done <- true
 				return
 			}
@@ -125,14 +145,14 @@ func (nt *NetworkTable) processBytes(done chan<- interface{}, c <-chan byte, rwc
 }
 
 func ListenAndServe(addr string) error {
-	nt := &NetworkTable{addr}
+	nt := &NetworkTable{addr, 1, make(map[string]entry)}
 	return nt.ListenAndServe()
 }
 
 // getUint16 returns a 16 byte unsigned number read from the channel
 // in little endian form. This may be a bug with the protocol.
 func getUint16(c <-chan byte) uint16 {
-	return binary.LittleEndian.Uint16([]byte{<-c, <-c})
+	return binary.BigEndian.Uint16([]byte{<-c, <-c})
 }
 
 func getBoolean(c <-chan byte) bool {
@@ -145,7 +165,7 @@ func getDouble(c <-chan byte) float64 {
 }
 
 func getString(c <-chan byte) string {
-	length := binary.BigEndian.Uint16([]byte{<-c, <-c}) // getUint16(c)
+	length := getUint16(c)
 	bytes := make([]byte, length, length)
 	for i := uint16(0); i < length; i++ {
 		bytes[i] = <-c

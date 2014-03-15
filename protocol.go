@@ -1,7 +1,7 @@
 package networktables
 
-// The version of the protocol currently implemented
-const Version = 0x02
+// The version of the protocol currently implemented.
+const Version = 0x0200
 
 // Values used to indicate the various message types used in the
 // NetworkTables protocol.
@@ -14,7 +14,7 @@ const (
 	EntryUpdate        = 0x11
 )
 
-// Types of data that can be sent over NetworkTables
+// Types of data that can be sent over NetworkTables.
 const (
 	Boolean      = 0x00
 	Double       = 0x01
@@ -23,3 +23,7 @@ const (
 	DoubleArray  = 0x11
 	StringArray  = 0x12
 )
+
+// ClientRequestID is the id clients use when requesting the server
+// assign an id to the key.
+const ClientRequestID = 0xFFFF
