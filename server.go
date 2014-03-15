@@ -12,6 +12,24 @@ import (
 	"time"
 )
 
+// ListenAndServe listens on the TCP network address addr and then
+// calls Serve with handler to handle requests on incoming
+// connections. The default port for a server should be :1735
+//
+// A trivial example server is:
+//
+//	package main
+//
+//	import "github.com/alexhenning/networktables"
+//
+//	func main() {
+//	    networktables.ListenAndServe(":1735")
+//	}
+func ListenAndServe(addr string) error {
+	nt := &NetworkTable{addr, 1, make(map[string]entry), nil, sync.Mutex{}}
+	return nt.ListenAndServe()
+}
+
 // NetworkTable is the structure for creating and handling the
 // NetworkTable server. If using the ListenAndServe function, it is
 // not necessary to create this manually.
@@ -93,24 +111,6 @@ func (nt *NetworkTable) set(key string, e entry) {
 	nt.entries[key] = e
 }
 
-// ListenAndServe listens on the TCP network address addr and then
-// calls Serve with handler to handle requests on incoming
-// connections. The default port for a server should be :1735
-//
-// A trivial example server is:
-//
-//	package main
-//
-//	import "github.com/alexhenning/networktables"
-//
-//	func main() {
-//	    networktables.ListenAndServe(":1735")
-//	}
-func ListenAndServe(addr string) error {
-	nt := &NetworkTable{addr, 1, make(map[string]entry), nil, sync.Mutex{}}
-	return nt.ListenAndServe()
-}
-
 // connection handles a single client connection
 type connection struct {
 	rwc net.Conn
@@ -122,11 +122,13 @@ func (conn *connection) run() {
 	defer conn.rwc.Close()
 	log.Printf("Got new connection from %s", conn.rwc.RemoteAddr().String())
 	done, c := make(chan error), make(chan byte)
+	defer close(done)
+	defer close(c)
 	go conn.processBytes(done, c)
 	for {
 		data := make([]byte, 2048)
 		n, err := conn.rwc.Read(data)
-		if err != nil || n < 0 {
+		if err != nil {
 			log.Printf("networktables: %s\n", err)
 			return
 		}
@@ -137,8 +139,6 @@ func (conn *connection) run() {
 				if err != nil {
 					log.Println(err)
 				}
-				close(done)
-				close(c)
 				return
 			}
 		}
