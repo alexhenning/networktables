@@ -1,5 +1,9 @@
 package networktables
 
+import (
+	"errors"
+)
+
 // The version of the protocol currently implemented.
 const Version = 0x0200
 
@@ -27,3 +31,12 @@ const (
 // ClientRequestID is the id clients use when requesting the server
 // assign an id to the key.
 const ClientRequestID = 0xFFFF
+
+// Errors that can occur while handling connections and dealing with the protocol
+var (
+	ErrUnsupportedVersion    = errors.New("networktables: unsupported client version tried to connect")
+	ErrUnsupportedVersionMsg = errors.New("networktables: server shouldn't get unsupported version message")
+	ErrHelloCompleteMsg      = errors.New("networktables: server shouldn't get hello complete message")
+	ErrAssertiveClient       = errors.New("networktables: assertive client trying to select entry ID")
+	ErrArraysUnsupported     = errors.New("networktables: server currently doesn't support array types")
+)

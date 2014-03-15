@@ -3,6 +3,7 @@ package networktables
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"math"
@@ -16,6 +17,7 @@ type NetworkTable struct {
 	nextID      uint16
 	entries     map[string]entry
 	connections []*connection
+	m           sync.Mutex
 }
 
 func (nt *NetworkTable) ListenAndServe() error {
@@ -74,8 +76,14 @@ func (nt *NetworkTable) assignEntryAll(e entry) {
 	// TODO: implement
 }
 
+func (nt *NetworkTable) set(key string, e entry) {
+	nt.m.Lock()
+	defer nt.m.Unlock()
+	nt.entries[key] = e
+}
+
 func ListenAndServe(addr string) error {
-	nt := &NetworkTable{addr, 1, make(map[string]entry), nil}
+	nt := &NetworkTable{addr, 1, make(map[string]entry), nil, sync.Mutex{}}
 	return nt.ListenAndServe()
 }
 
@@ -89,7 +97,7 @@ type connection struct {
 func (conn *connection) run() {
 	defer conn.rwc.Close()
 	log.Printf("Got new connection from %s", conn.rwc.RemoteAddr().String())
-	done, c := make(chan interface{}), make(chan byte)
+	done, c := make(chan error), make(chan byte)
 	go conn.processBytes(done, c)
 	for {
 		data := make([]byte, 2048)
@@ -101,7 +109,10 @@ func (conn *connection) run() {
 		for i := 0; i < n; i++ {
 			select {
 			case c <- data[i]:
-			case <-done:
+			case err := <-done:
+				if err != nil {
+					log.Println(err)
+				}
 				close(done)
 				close(c)
 				return
@@ -110,7 +121,7 @@ func (conn *connection) run() {
 	}
 }
 
-func (conn *connection) processBytes(done chan<- interface{}, c <-chan byte) {
+func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 	for b := range c {
 		switch b {
 		case KeepAlive:
@@ -124,28 +135,26 @@ func (conn *connection) processBytes(done chan<- interface{}, c <-chan byte) {
 				conn.Write([]byte{HelloComplete})
 			} else {
 				conn.Write([]byte{VersionUnsupported})
-				done <- true
+				done <- ErrUnsupportedVersion
 				return
 			}
 		case VersionUnsupported:
-			log.Printf("Error, server shouldn't get VersionUnsupported message, closing connection.\n")
-			done <- true
+			done <- ErrUnsupportedVersionMsg
 			return
 		case HelloComplete:
-			log.Printf("Error, server shouldn't get HelloComplete message, closing connection.\n")
-			done <- true
+			done <- ErrHelloCompleteMsg
 			return
 		case EntryAssignment:
 			log.Printf("Received entry assignment\n")
 			if err := conn.handleEntryAssignment(c); err != nil {
-				log.Println(err)
-				done <- true
+				done <- err
 				return
 			}
 		case EntryUpdate:
 			log.Printf("Received entry update\n")
 		default:
-			log.Printf("Received byte \"%X\"", b)
+			done <- errors.New(fmt.Sprintf("networktables: received unexpected byte \"%X\"", b))
+			return
 		}
 	}
 }
@@ -158,7 +167,7 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 		return nil
 	}
 	if id != ClientRequestID {
-		return errors.New("Error, assertive client trying to pick the ID it assigns, closing connection.")
+		return ErrAssertiveClient
 	}
 
 	id, conn.nt.nextID = conn.nt.nextID, conn.nt.nextID+1
@@ -168,17 +177,17 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	case Boolean:
 		b := getBoolean(c)
 		log.Printf("\tValue: %t\n", b)
-		conn.nt.entries[name] = newBooleanEntry(name, b, id, sequence)
+		conn.nt.set(name, newBooleanEntry(name, b, id, sequence))
 	case Double:
 		d := getDouble(c)
 		log.Printf("\tValue: %f\n", d)
-		conn.nt.entries[name] = newDoubleEntry(name, d, id, sequence)
+		conn.nt.set(name, newDoubleEntry(name, d, id, sequence))
 	case String:
 		s := getString(c)
 		log.Printf("\tValue: %s\n", s)
-		conn.nt.entries[name] = newStringEntry(name, s, id, sequence)
+		conn.nt.set(name, newStringEntry(name, s, id, sequence))
 	case BooleanArray, DoubleArray, StringArray:
-		return errors.New("Error, server currently can't handle array types, closing connection.\n")
+		return ErrArraysUnsupported
 	}
 	conn.nt.assignEntryAll(conn.nt.entries[name])
 	return nil
