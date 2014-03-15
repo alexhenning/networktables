@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// NetworkTable is the structure for creating and handling the
+// NetworkTable server. If using the ListenAndServe function, it is
+// not necessary to create this manually.
 type NetworkTable struct {
 	addr        string
 	nextID      uint16
@@ -20,6 +23,8 @@ type NetworkTable struct {
 	m           sync.Mutex
 }
 
+// ListenAndServe listens on the TCP network address nt.addr and then
+// calls Serve to handle requests on incoming connections.
 func (nt *NetworkTable) ListenAndServe() error {
 	log.Printf("Listening on %s\n", nt.addr)
 	listener, err := net.Listen("tcp", nt.addr)
@@ -29,6 +34,10 @@ func (nt *NetworkTable) ListenAndServe() error {
 	return nt.Serve(listener)
 }
 
+// Serve accepts incoming connections on the listener, creating a new
+// service goroutine for each. The service goroutines take care of
+// receiving data from their client and sending out updates to all
+// clients as necessary
 func (nt *NetworkTable) Serve(listener net.Listener) error {
 	defer listener.Close()
 	log.Printf("Serving\n")
@@ -84,6 +93,19 @@ func (nt *NetworkTable) set(key string, e entry) {
 	nt.entries[key] = e
 }
 
+// ListenAndServe listens on the TCP network address addr and then
+// calls Serve with handler to handle requests on incoming
+// connections. The default port for a server should be :1735
+//
+// A trivial example server is:
+//
+//	package main
+//
+//	import "github.com/alexhenning/networktables"
+//
+//	func main() {
+//	    networktables.ListenAndServe(":1735")
+//	}
 func ListenAndServe(addr string) error {
 	nt := &NetworkTable{addr, 1, make(map[string]entry), nil, sync.Mutex{}}
 	return nt.ListenAndServe()
