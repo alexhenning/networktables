@@ -246,11 +246,6 @@ func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	name, entryType, id, sequence := getString(c), <-c, getUint16(c), sequenceNumber(getUint16(c))
 
-	if _, exists := conn.nt.entriesByName[name]; exists {
-		// BUG(Alex) Fix race condition when two clients create an entry at the same time
-		log.Printf("Warning, client requesting an already existing key, ignoring.\n")
-		return nil
-	}
 	if id != ClientRequestID {
 		return ErrAssertiveClient
 	}
@@ -269,7 +264,13 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 		return ErrArraysUnsupported
 	}
 	e.dataFromBytes(c)
-	conn.nt.set(e)
+
+	if _, exists := conn.nt.entriesByName[name]; !exists {
+		conn.nt.set(e)
+	} else {
+		log.Printf("Warning, client requesting an already existing key, ignoring.\n")
+		return nil
+	}
 
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
 		name, entryType, id, sequence, e.Value())
