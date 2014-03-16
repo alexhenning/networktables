@@ -7,22 +7,8 @@ import (
 	"time"
 )
 
-func bytesToChannel(bytes []byte) <-chan byte {
-	c := make(chan byte)
-	go func() {
-		for _, b := range bytes {
-			c <- b
-		}
-		close(c)
-	}()
-	return c
-}
-
-func randomSource(t *testing.T) *rand.Rand {
-	seed := time.Now().UnixNano()
-	t.Logf("Seed: %d\n", seed)
-	return rand.New(rand.NewSource(seed))
-}
+// TODO: test assignmentMessage
+// TODO: test updateMessage
 
 func TestUint16EncodingDecoding(t *testing.T) {
 	source := randomSource(t)
@@ -58,13 +44,32 @@ func TestDoubleEncodingDecoding(t *testing.T) {
 
 func TestStringEncodingDecoding(t *testing.T) {
 	source := randomSource(t)
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 20; i++ {
 		expected := randString(source)
 		actual := getString(bytesToChannel(getStringBytes(expected)))
 		if actual != expected {
 			t.Errorf("String: expected %s, actual %s", expected, actual)
 		}
 	}
+}
+
+// Testing utilities
+
+func bytesToChannel(bytes []byte) <-chan byte {
+	c := make(chan byte)
+	go func() {
+		for _, b := range bytes {
+			c <- b
+		}
+		close(c)
+	}()
+	return c
+}
+
+func randomSource(t *testing.T) *rand.Rand {
+	seed := time.Now().UnixNano()
+	t.Logf("Seed: %d\n", seed)
+	return rand.New(rand.NewSource(seed))
 }
 
 const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.,!?/\\$&[{}(=*+)]!#`8642091357%~^@<>'\";:"
