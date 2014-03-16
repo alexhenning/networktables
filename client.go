@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 // Table is an interface that allows getting values out of
@@ -39,6 +40,7 @@ type Client struct {
 	addr          string
 	entriesByName map[string]entry
 	entriesByID   map[uint16]entry
+	toSend        []entry
 	state         state
 	conn          net.Conn
 	m             sync.Mutex
@@ -76,10 +78,11 @@ func (cl *Client) ConnectAndListen() error {
 		return err
 	}
 
-	done, c := make(chan error), make(chan byte)
+	done, c, ticks := make(chan error), make(chan byte), time.Tick(20*time.Millisecond)
 	defer close(done)
 	defer close(c)
 	go cl.processBytes(done, c)
+	go cl.sendUpdates(done, ticks)
 
 	for {
 		data := make([]byte, 2048)
@@ -104,7 +107,6 @@ func (cl *Client) ConnectAndListen() error {
 // hello sends the hello message for the implemented version.
 func (cl *Client) hello() error {
 	data := helloMessage(version)
-	log.Printf("Send \"%X\"", data)
 	written, err := cl.Write(data)
 	if written != len(data) && err == nil {
 		err = errors.New(fmt.Sprintf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written))
@@ -116,7 +118,6 @@ func (cl *Client) hello() error {
 // server.
 func (cl *Client) updateEntry(e entry) {
 	data := updateMessage(e)
-	log.Printf("Send \"%X\"", data)
 	written, err := cl.conn.Write(data)
 	if err != nil {
 		log.Println(err)
@@ -140,7 +141,6 @@ func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 			done <- ErrUnsupportedVersionMsg
 			return
 		case helloComplete:
-			log.Printf("Received hello complete\n")
 			if cl.state == disconnected {
 				cl.state = connected
 			} else {
@@ -149,13 +149,11 @@ func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 			}
 			// TODO: Send queued assignments
 		case entryAssignment:
-			log.Printf("Received entry assignment\n")
 			if err := cl.handleEntryAssignment(c); err != nil {
 				done <- err
 				return
 			}
 		case entryUpdate:
-			log.Printf("Received entry update\n")
 			if err := cl.handleEntryUpdate(c); err != nil {
 				done <- err
 				return
@@ -221,6 +219,22 @@ func (cl *Client) set(e entry) {
 	defer cl.m.Unlock()
 	cl.entriesByName[e.Name()] = e
 	cl.entriesByID[e.ID()] = e
+}
+
+// sendUpdates periodically sends the updates at a regular rate.
+func (cl *Client) sendUpdates(done chan<- error, ticks <-chan time.Time) {
+	for _ = range ticks {
+		cl.m.Lock()
+
+		for _, e := range cl.toSend {
+			e.Lock()
+			cl.updateEntry(e)
+			e.Unlock()
+		}
+		cl.toSend = nil
+
+		cl.m.Unlock()
+	}
 }
 
 // Write is a allows the connection to be written to safely from
@@ -301,6 +315,8 @@ func (cl *Client) put(key string, val interface{}, entryType byte) error {
 	if err != nil {
 		return err
 	}
+	cl.m.Lock()
+	defer cl.m.Unlock()
 	e.Lock()
 	defer e.Unlock()
 
@@ -308,11 +324,12 @@ func (cl *Client) put(key string, val interface{}, entryType byte) error {
 		return ErrWrongType
 	}
 
-	// BUG(Alex) Improperly handles sending, needs to wait for server to send value.
 	// BUG(Alex) Doesn't handle entry assignments
-	e.SetValue(val)
-	e.SetSequenceNumber(e.SequenceNumber() + 1)
-	cl.updateEntry(e)
+	// BUG(Alex) Sends duplicates if updated too often
+	c := clone(e)
+	c.SetValue(val)
+	c.SetSequenceNumber(e.SequenceNumber() + 1)
+	cl.toSend = append(cl.toSend, c)
 	return nil
 }
 

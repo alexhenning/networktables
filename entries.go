@@ -27,6 +27,12 @@ type entry interface {
 	dataToBytes() []byte
 }
 
+func clone(e entry) entry {
+	c, _ := newEntry(e.Name(), e.ID(), e.SequenceNumber(), e.Type())
+	c.SetValue(e.Value())
+	return c
+}
+
 func newEntry(name string, id uint16, sequence sequenceNumber, entryType byte) (entry, error) {
 	base := baseEntry{name, id, sequence, entryType, sync.Mutex{}}
 	var e entry
