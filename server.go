@@ -27,18 +27,18 @@ import (
 //	    networktables.ListenAndServe(":1735")
 //	}
 func ListenAndServe(addr string) error {
-	nt := &NetworkTable{
+	srv := &Server{
 		addr:          addr,
 		entriesByName: make(map[string]entry),
 		entriesByID:   make(map[uint16]entry),
 	}
-	return nt.ListenAndServe()
+	return srv.ListenAndServe()
 }
 
 // NetworkTable is the structure for creating and handling the
 // NetworkTable server. If using the ListenAndServe function, it is
 // not necessary to create this manually.
-type NetworkTable struct {
+type Server struct {
 	addr          string
 	nextID        uint16
 	entriesByName map[string]entry
@@ -48,22 +48,22 @@ type NetworkTable struct {
 	idM           sync.Mutex
 }
 
-// ListenAndServe listens on the TCP network address nt.addr and then
+// ListenAndServe listens on the TCP network address srv.addr and then
 // calls Serve to handle requests on incoming connections.
-func (nt *NetworkTable) ListenAndServe() error {
-	log.Printf("Listening on %s\n", nt.addr)
-	listener, err := net.Listen("tcp", nt.addr)
+func (srv *Server) ListenAndServe() error {
+	log.Printf("Listening on %s\n", srv.addr)
+	listener, err := net.Listen("tcp", srv.addr)
 	if err != nil {
 		return err
 	}
-	return nt.Serve(listener)
+	return srv.Serve(listener)
 }
 
 // Serve accepts incoming connections on the listener, creating a new
 // service goroutine for each. The service goroutines take care of
 // receiving data from their client and sending out updates to all
 // clients as necessary
-func (nt *NetworkTable) Serve(listener net.Listener) error {
+func (srv *Server) Serve(listener net.Listener) error {
 	defer listener.Close()
 	log.Printf("Serving\n")
 	var tempDelay time.Duration // how long to sleep on accept failure
@@ -87,18 +87,18 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 		}
 		tempDelay = 0
 		log.Printf("Got connection\n")
-		conn := &connection{rwc, nt, sync.Mutex{}}
-		nt.m.Lock()
-		nt.connections = append(nt.connections, conn)
-		nt.m.Unlock()
+		conn := &connection{rwc, srv, sync.Mutex{}}
+		srv.m.Lock()
+		srv.connections = append(srv.connections, conn)
+		srv.m.Unlock()
 		go conn.run()
 	}
 	return nil
 }
 
 // assignEntry sends the assign entry message for an entry to the
-// client.
-func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
+// cliesrv.
+func (srv *Server) assignEntry(e entry, w io.Writer) {
 	e.Lock()
 	defer e.Unlock()
 	data := assignmentMessage(e)
@@ -114,15 +114,15 @@ func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
 
 // assignEntryAll sends the assign entry message for an entry to all
 // connected clients.
-func (nt *NetworkTable) assignEntryAll(e entry) {
-	for _, conn := range nt.connections {
-		nt.assignEntry(e, conn)
+func (srv *Server) assignEntryAll(e entry) {
+	for _, conn := range srv.connections {
+		srv.assignEntry(e, conn)
 	}
 }
 
 // updateEntry sends the update entry message for an entry to the
 // client.
-func (nt *NetworkTable) updateEntry(e entry, w io.Writer) {
+func (srv *Server) updateEntry(e entry, w io.Writer) {
 	data := updateMessage(e)
 	log.Printf("Send \"%X\"", data)
 	written, err := w.Write(data)
@@ -136,37 +136,37 @@ func (nt *NetworkTable) updateEntry(e entry, w io.Writer) {
 
 // updateEntryAll sends the update entry message for an entry to all
 // connected clients.
-func (nt *NetworkTable) updateEntryAll(e entry) {
-	for _, conn := range nt.connections {
-		nt.updateEntry(e, conn)
+func (srv *Server) updateEntryAll(e entry) {
+	for _, conn := range srv.connections {
+		srv.updateEntry(e, conn)
 	}
 }
 
 // set stores an entry so that it can be referenced by ID or name in a
 // manner that is safe to use from multiple goroutines.
-func (nt *NetworkTable) set(e entry) {
-	nt.m.Lock()
-	defer nt.m.Unlock()
-	nt.entriesByName[e.Name()] = e
-	nt.entriesByID[e.ID()] = e
+func (srv *Server) set(e entry) {
+	srv.m.Lock()
+	defer srv.m.Unlock()
+	srv.entriesByName[e.Name()] = e
+	srv.entriesByID[e.ID()] = e
 }
 
 // id returns a unique id in a manner that is safe to use from
 // multiple goroutines.
-func (nt *NetworkTable) id() uint16 {
-	nt.idM.Lock()
-	defer nt.idM.Unlock()
-	id := nt.nextID
-	nt.nextID++
+func (srv *Server) id() uint16 {
+	srv.idM.Lock()
+	defer srv.idM.Unlock()
+	id := srv.nextID
+	srv.nextID++
 	return id
 }
 
-func (nt *NetworkTable) removeConnection(conn *connection) {
-	nt.m.Lock()
-	defer nt.m.Unlock()
-	for i, c := range nt.connections {
+func (srv *Server) removeConnection(conn *connection) {
+	srv.m.Lock()
+	defer srv.m.Unlock()
+	for i, c := range srv.connections {
 		if c == conn {
-			nt.connections = append(nt.connections[:i], nt.connections[i+1:]...)
+			srv.connections = append(srv.connections[:i], srv.connections[i+1:]...)
 			return
 		}
 	}
@@ -175,7 +175,7 @@ func (nt *NetworkTable) removeConnection(conn *connection) {
 // connection handles a single client connection.
 type connection struct {
 	rwc net.Conn
-	nt  *NetworkTable
+	srv *Server
 	m   sync.Mutex
 }
 
@@ -184,7 +184,7 @@ type connection struct {
 // occurs, such as invalid values being sent.
 func (conn *connection) run() {
 	defer conn.rwc.Close()
-	defer conn.nt.removeConnection(conn)
+	defer conn.srv.removeConnection(conn)
 	log.Printf("Got new connection from %s", conn.rwc.RemoteAddr().String())
 	done, c := make(chan error), make(chan byte)
 	defer close(done)
@@ -222,8 +222,8 @@ func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 			version := getUint16(c)
 			log.Printf("Received hello for version %d\n", version)
 			if version == Version {
-				for _, entry := range conn.nt.entriesByName {
-					conn.nt.assignEntry(entry, conn)
+				for _, entry := range conn.srv.entriesByName {
+					conn.srv.assignEntry(entry, conn)
 				}
 				conn.Write([]byte{HelloComplete})
 			} else {
@@ -265,7 +265,7 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 		return ErrAssertiveClient
 	}
 
-	id = conn.nt.id()
+	id = conn.srv.id()
 
 	var e entry
 	switch entryType {
@@ -280,8 +280,8 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	}
 	e.dataFromBytes(c)
 
-	if _, exists := conn.nt.entriesByName[name]; !exists {
-		conn.nt.set(e)
+	if _, exists := conn.srv.entriesByName[name]; !exists {
+		conn.srv.set(e)
 	} else {
 		log.Printf("Warning, client requesting an already existing key, ignoring.\n")
 		return nil
@@ -289,7 +289,7 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
 		name, entryType, id, sequence, e.Value())
-	conn.nt.assignEntryAll(e)
+	conn.srv.assignEntryAll(e)
 	return nil
 }
 
@@ -297,7 +297,7 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 // client, updating the table and notifying other connected clients.
 func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	id, sequence := getUint16(c), sequenceNumber(getUint16(c))
-	e := conn.nt.entriesByID[id]
+	e := conn.srv.entriesByID[id]
 	e.Lock()
 	defer e.Unlock()
 
@@ -310,7 +310,7 @@ func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	e.dataFromBytes(c)
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
 		e.Name(), e.Type(), e.ID(), e.SequenceNumber(), e.Value())
-	conn.nt.updateEntryAll(e)
+	conn.srv.updateEntryAll(e)
 	return nil
 }
 
