@@ -6,6 +6,13 @@ The main project with support for Java and C++ is located at [[https://usfirst.c
 
 A pdf of the protocol specification is available at [[https://usfirst.collab.net/sf/docman/do/downloadDocument/projects.networktables/docman.root/doc1001/1]]
 
-Starting a server is as easy as:
-:    include "github.com/alexhenning/networktables"
-:    networktables.ListenAndServe(":1735")
+API documentation is available on g[[http://godoc.org/github.com/alexhenning/networktables][godoc.org]].
+
+* Usage
+Starting a server in a Go program is as easy as:
+: include "github.com/alexhenning/networktables"
+: networktables.ListenAndServe(":1735")
+
+To run the provided main server existing 
+: $ cd $GOPATH/src/github.com/alexhenning/networktables
+: $ go run main-server/server.go
