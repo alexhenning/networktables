@@ -32,7 +32,7 @@ func TestBooleanEncodingDecoding(t *testing.T) {
 
 func TestDoubleEncodingDecoding(t *testing.T) {
 	source := randomSource(t)
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 		expected := source.Float64()
 		actual := getDouble(bytesToChannel(getDoubleBytes(expected)))
 		if actual != expected {
