@@ -12,7 +12,7 @@ func TestBooleanEntry(t *testing.T) {
 		} else {
 			expected = []byte{0X00}
 		}
-		e := newBooleanEntry("/boolean", 0X0042, 0X0000)
+		e, _ := newEntry("/boolean", 0X0042, 0X0000, tBoolean)
 		e.dataFromBytes(bytesToChannel(expected))
 		actual := e.dataToBytes()
 		if string(actual) != string(expected) {
@@ -26,7 +26,7 @@ func TestDoubleEntry(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		value := source.Float64()
 		expected := getDoubleBytes(value)
-		e := newDoubleEntry("/double", 0X0042, 0X0000)
+		e, _ := newEntry("/double", 0X0042, 0X0000, tDouble)
 		e.dataFromBytes(bytesToChannel(expected))
 		actual := e.dataToBytes()
 		if string(actual) != string(expected) {
@@ -41,7 +41,7 @@ func TestStringEntry(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		value := randString(source)
 		expected := getStringBytes(value)
-		e := newStringEntry("/string", 0X0042, 0X0000)
+		e, _ := newEntry("/string", 0X0042, 0X0000, tString)
 		e.dataFromBytes(bytesToChannel(expected))
 		actual := e.dataToBytes()
 		if string(actual) != string(expected) {

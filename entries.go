@@ -26,6 +26,22 @@ type entry interface {
 	dataToBytes() []byte
 }
 
+func newEntry(name string, id uint16, sequence sequenceNumber, entryType byte) (entry, error) {
+	base := baseEntry{name, id, sequence, entryType, sync.Mutex{}}
+	var e entry
+	switch entryType {
+	case tBoolean:
+		e = &booleanEntry{base, false}
+	case tDouble:
+		e = &doubleEntry{base, 0}
+	case tString:
+		e = &stringEntry{base, ""}
+	case tBooleanArray, tDoubleArray, tStringArray:
+		return nil, ErrArraysUnsupported
+	}
+	return e, nil
+}
+
 // baseEntry abstracts out the commonalities between different entry
 // types, including name, id, sequence number and type.
 type baseEntry struct {
@@ -66,10 +82,6 @@ type booleanEntry struct {
 	value bool
 }
 
-func newBooleanEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &booleanEntry{baseEntry{name, id, sequence, tBoolean, sync.Mutex{}}, false}
-}
-
 func (e *booleanEntry) Value() interface{} {
 	return e.value
 }
@@ -88,10 +100,6 @@ type doubleEntry struct {
 	value float64
 }
 
-func newDoubleEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &doubleEntry{baseEntry{name, id, sequence, tDouble, sync.Mutex{}}, 0}
-}
-
 func (e *doubleEntry) Value() interface{} {
 	return e.value
 }
@@ -108,10 +116,6 @@ func (e *doubleEntry) dataToBytes() []byte {
 type stringEntry struct {
 	baseEntry
 	value string
-}
-
-func newStringEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &stringEntry{baseEntry{name, id, sequence, tString, sync.Mutex{}}, ""}
 }
 
 func (e *stringEntry) Value() interface{} {

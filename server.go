@@ -269,19 +269,11 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	if id != clientRequestID {
 		return ErrAssertiveClient
 	}
-
 	id = conn.srv.id()
 
-	var e entry
-	switch entryType {
-	case tBoolean:
-		e = newBooleanEntry(name, id, sequence)
-	case tDouble:
-		e = newDoubleEntry(name, id, sequence)
-	case tString:
-		e = newStringEntry(name, id, sequence)
-	case tBooleanArray, tDoubleArray, tStringArray:
-		return ErrArraysUnsupported
+	e, err := newEntry(name, id, sequence, entryType)
+	if err != nil {
+		return err
 	}
 	e.dataFromBytes(c)
 
