@@ -27,7 +27,11 @@ import (
 //	    networktables.ListenAndServe(":1735")
 //	}
 func ListenAndServe(addr string) error {
-	nt := &NetworkTable{addr, 1, make(map[string]entry), make(map[uint16]entry), nil, sync.Mutex{}}
+	nt := &NetworkTable{
+		addr:          addr,
+		entriesByName: make(map[string]entry),
+		entriesByID:   make(map[uint16]entry),
+	}
 	return nt.ListenAndServe()
 }
 
@@ -41,6 +45,7 @@ type NetworkTable struct {
 	entriesByID   map[uint16]entry
 	connections   []*connection
 	m             sync.Mutex
+	idM           sync.Mutex
 }
 
 // ListenAndServe listens on the TCP network address nt.addr and then
@@ -83,6 +88,7 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 		tempDelay = 0
 		log.Printf("Got connection\n")
 		conn := &connection{rwc, nt, sync.Mutex{}}
+		// BUG(Alex) Connections should be removed once closed
 		nt.connections = append(nt.connections, conn)
 		go conn.run()
 	}
@@ -140,6 +146,16 @@ func (nt *NetworkTable) set(e entry) {
 	defer nt.m.Unlock()
 	nt.entriesByName[e.Name()] = e
 	nt.entriesByID[e.ID()] = e
+}
+
+// id returns a unique id in a manner that is safe to use from
+// multiple goroutines.
+func (nt *NetworkTable) id() uint16 {
+	nt.idM.Lock()
+	defer nt.idM.Unlock()
+	id := nt.nextID
+	nt.nextID++
+	return id
 }
 
 // connection handles a single client connection.
@@ -239,7 +255,7 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 		return ErrAssertiveClient
 	}
 
-	id, conn.nt.nextID = conn.nt.nextID, conn.nt.nextID+1 // BUG(Alex) Make getting the next id threadsafe
+	id = conn.nt.id()
 
 	var e entry
 	switch entryType {
