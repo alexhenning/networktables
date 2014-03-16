@@ -38,7 +38,8 @@ const (
 // assign an id to the key.
 const clientRequestID = 0xFFFF
 
-// Errors that can occur while handling connections and dealing with the protocol
+// Errors that can occur while handling connections and dealing with
+// the protocol.
 var (
 	ErrUnsupportedHelloMsg     = errors.New("networktables: server unexpectedly sent hello message")
 	ErrUnsupportedVersion      = errors.New("networktables: unsupported client version tried to connect")
@@ -47,6 +48,12 @@ var (
 	ErrMultipleHellosCompleted = errors.New("networktables: server unexpectedly sent hello complete message")
 	ErrAssertiveClient         = errors.New("networktables: assertive client trying to select entry ID")
 	ErrArraysUnsupported       = errors.New("networktables: server currently doesn't support array types")
+)
+
+// Errors that can occur while trying to get a value from a client.
+var (
+	ErrNoSuchKey = errors.New("networktables: no such key exists")
+	ErrWrongType = errors.New("networktables: key exists but contains the wrong type of data")
 )
 
 // helloMessage returns the bytes to send for the hello

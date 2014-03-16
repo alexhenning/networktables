@@ -14,10 +14,10 @@ import (
 // Table is an interface that allows getting values out of
 // NetworkTables and Subtables in a consistent way.
 type Table interface {
-	GetBoolean(key string) bool
-	GetFloat64(key string) float64
-	GetString(key string) string
-	GetSubtable(key string) Table
+	GetBoolean(key string) (bool, error)
+	GetFloat64(key string) (float64, error)
+	GetString(key string) (string, error)
+	GetSubtable(key string) (Table, error)
 }
 
 // State of the client
@@ -206,4 +206,21 @@ func (cl *Client) Write(b []byte) (int, error) {
 	cl.m.Lock()
 	defer cl.m.Unlock()
 	return cl.conn.Write(b)
+}
+
+// GetBoolean return the boolean value associated with the key if
+// possible. This method is safe to use from multiple goroutines.
+func (cl *Client) GetBoolean(key string) (bool, error) {
+	e, ok := cl.entriesByName[key]
+	if !ok {
+		return false, ErrNoSuchKey
+	}
+	e.Lock()
+	defer e.Unlock()
+
+	if e.Type() != tBoolean {
+		return false, ErrWrongType
+	}
+
+	return e.Value().(bool), nil
 }
