@@ -30,9 +30,9 @@ func ListenAndServe(addr string) error {
 	return NewServer(addr).ListenAndServe()
 }
 
-// NetworkTable is the structure for creating and handling the
-// NetworkTable server. If using the ListenAndServe function, it is
-// not necessary to create this manually.
+// Server is the structure for creating and handling the NetworkTable
+// server. If using the ListenAndServe function, it is not necessary
+// to create this manually.
 type Server struct {
 	addr          string
 	nextID        uint16
