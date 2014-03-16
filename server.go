@@ -88,8 +88,9 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 		tempDelay = 0
 		log.Printf("Got connection\n")
 		conn := &connection{rwc, nt, sync.Mutex{}}
-		// BUG(Alex) Connections should be removed once closed
+		nt.m.Lock()
 		nt.connections = append(nt.connections, conn)
+		nt.m.Unlock()
 		go conn.run()
 	}
 	return nil
@@ -160,6 +161,17 @@ func (nt *NetworkTable) id() uint16 {
 	return id
 }
 
+func (nt *NetworkTable) removeConnection(conn *connection) {
+	nt.m.Lock()
+	defer nt.m.Unlock()
+	for i, c := range nt.connections {
+		if c == conn {
+			nt.connections = append(nt.connections[:i], nt.connections[i+1:]...)
+			return
+		}
+	}
+}
+
 // connection handles a single client connection.
 type connection struct {
 	rwc net.Conn
@@ -172,6 +184,7 @@ type connection struct {
 // occurs, such as invalid values being sent.
 func (conn *connection) run() {
 	defer conn.rwc.Close()
+	defer conn.nt.removeConnection(conn)
 	log.Printf("Got new connection from %s", conn.rwc.RemoteAddr().String())
 	done, c := make(chan error), make(chan byte)
 	defer close(done)
