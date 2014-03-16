@@ -14,10 +14,13 @@ import (
 // Table is an interface that allows getting values out of
 // NetworkTables and Subtables in a consistent way.
 type Table interface {
-	GetBoolean(key string) (bool, error)
-	GetFloat64(key string) (float64, error)
-	GetString(key string) (string, error)
-	GetSubtable(key string) (Table, error)
+	GetBoolean(string) (bool, error)
+	GetFloat64(string) (float64, error)
+	GetString(string) (string, error)
+	GetSubtable(string) (Table, error)
+	PutBoolean(string, bool) error
+	PutFloat64(string, float64) error
+	PutString(string, string) error
 }
 
 // State of the client
@@ -109,6 +112,20 @@ func (cl *Client) hello() error {
 	return err
 }
 
+// updateEntry sends the update entry message for an entry to the
+// server.
+func (cl *Client) updateEntry(e entry) {
+	data := updateMessage(e)
+	log.Printf("Send \"%X\"", data)
+	written, err := cl.conn.Write(data)
+	if err != nil {
+		log.Println(err)
+	}
+	if written != len(data) {
+		log.Printf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written)
+	}
+}
+
 // processBytes takes the stream of bytes on the channel and processes
 // them, negotiating the hello exchange and receiving entry updates
 // from the client.
@@ -181,7 +198,12 @@ func (cl *Client) handleEntryUpdate(c <-chan byte) error {
 	defer e.Unlock()
 
 	if !e.SequenceNumber().gt(sequence) {
-		log.Printf("Warning, client updating an entry with an out of date sequence number, ignoring.\n")
+		e, err := newEntry(e.Name(), id, sequence, e.Type())
+		if err != nil {
+			return err
+		}
+		e.dataFromBytes(c)
+		log.Printf("Warning, server updating an entry with an out of date sequence number, ignoring.\n")
 		return nil
 	}
 
@@ -209,6 +231,8 @@ func (cl *Client) Write(b []byte) (int, error) {
 	return cl.conn.Write(b)
 }
 
+// get gets the entry associated with the key if the hello finished
+// command has been received and an entry with the key exists.
 func (cl *Client) get(key string) (entry, error) {
 	if cl.state != connected {
 		return nil, ErrHelloNotDone
@@ -220,7 +244,7 @@ func (cl *Client) get(key string) (entry, error) {
 	return e, nil
 }
 
-// GetBoolean return the boolean value associated with the key if
+// GetBoolean returns the boolean value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetBoolean(key string) (bool, error) {
 	e, err := cl.get(key)
@@ -237,7 +261,7 @@ func (cl *Client) GetBoolean(key string) (bool, error) {
 	return e.Value().(bool), nil
 }
 
-// GetFloat64 return the float64 value associated with the key if
+// GetFloat64 returns the float64 value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetFloat64(key string) (float64, error) {
 	e, err := cl.get(key)
@@ -254,7 +278,7 @@ func (cl *Client) GetFloat64(key string) (float64, error) {
 	return e.Value().(float64), nil
 }
 
-// GetString return the string value associated with the key if
+// GetString returns the string value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetString(key string) (string, error) {
 	e, err := cl.get(key)
@@ -269,4 +293,43 @@ func (cl *Client) GetString(key string) (string, error) {
 	}
 
 	return e.Value().(string), nil
+}
+
+// put wraps the common functionality of the various put methods.
+func (cl *Client) put(key string, val interface{}, entryType byte) error {
+	e, err := cl.get(key)
+	if err != nil {
+		return err
+	}
+	e.Lock()
+	defer e.Unlock()
+
+	if e.Type() != entryType {
+		return ErrWrongType
+	}
+
+	// BUG(Alex) Improperly handles sending, needs to wait for server to send value.
+	// BUG(Alex) Doesn't handle entry assignments
+	e.SetValue(val)
+	e.SetSequenceNumber(e.SequenceNumber() + 1)
+	cl.updateEntry(e)
+	return nil
+}
+
+// PutBoolean associates the value with the key if possible. This
+// method is safe to use from multiple goroutines.
+func (cl *Client) PutBoolean(key string, val bool) error {
+	return cl.put(key, val, tBoolean)
+}
+
+// PutFloat64 associates the value with the key if possible. This
+// method is safe to use from multiple goroutines.
+func (cl *Client) PutFloat64(key string, val float64) error {
+	return cl.put(key, val, tDouble)
+}
+
+// PutString associates the value with the key if possible. This
+// method is safe to use from multiple goroutines.
+func (cl *Client) PutString(key string, val string) error {
+	return cl.put(key, val, tString)
 }

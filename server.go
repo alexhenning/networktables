@@ -299,6 +299,11 @@ func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	defer e.Unlock()
 
 	if !e.SequenceNumber().gt(sequence) {
+		e, err := newEntry(e.Name(), id, sequence, e.Type())
+		if err != nil {
+			return err
+		}
+		e.dataFromBytes(c)
 		log.Printf("Warning, client updating an entry with an out of date sequence number, ignoring.\n")
 		return nil
 	}

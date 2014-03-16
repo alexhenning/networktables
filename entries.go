@@ -14,6 +14,7 @@ type entry interface {
 	SetSequenceNumber(sequenceNumber)
 	Type() byte
 	Value() interface{}
+	SetValue(interface{})
 	Lock()
 	Unlock()
 
@@ -86,6 +87,13 @@ func (e *booleanEntry) Value() interface{} {
 	return e.value
 }
 
+func (e *booleanEntry) SetValue(val interface{}) {
+	switch val.(type) {
+	case bool:
+		e.value = val.(bool)
+	}
+}
+
 func (e *booleanEntry) dataFromBytes(c <-chan byte) {
 	e.value = getBoolean(c)
 }
@@ -104,6 +112,13 @@ func (e *doubleEntry) Value() interface{} {
 	return e.value
 }
 
+func (e *doubleEntry) SetValue(val interface{}) {
+	switch val.(type) {
+	case float64:
+		e.value = val.(float64)
+	}
+}
+
 func (e *doubleEntry) dataFromBytes(c <-chan byte) {
 	e.value = getDouble(c)
 }
@@ -120,6 +135,13 @@ type stringEntry struct {
 
 func (e *stringEntry) Value() interface{} {
 	return e.value
+}
+
+func (e *stringEntry) SetValue(val interface{}) {
+	switch val.(type) {
+	case string:
+		e.value = val.(string)
+	}
 }
 
 func (e *stringEntry) dataFromBytes(c <-chan byte) {

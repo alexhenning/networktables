@@ -27,6 +27,22 @@ func main() {
 		}
 
 		log.Printf("%t, %f, %s\n", b, f, s)
+
+		err = client.PutBoolean("/bool", !b)
+		if err != nil {
+			log.Println(err)
+		}
+
+		err = client.PutFloat64("/test", f+1)
+		if err != nil {
+			log.Println(err)
+		}
+
+		err = client.PutString("/str", "Alex")
+		if err != nil {
+			log.Println(err)
+		}
+
 		<-tick
 	}
 }
