@@ -11,32 +11,32 @@ import (
 )
 
 // The version of the protocol currently implemented.
-const Version = 0x0200
+const version = 0x0200
 
 // Values used to indicate the various message types used in the
 // NetworkTables protocol.
 const (
-	KeepAlive          = 0x00
-	Hello              = 0x01
-	VersionUnsupported = 0x02
-	HelloComplete      = 0x03
-	EntryAssignment    = 0x10
-	EntryUpdate        = 0x11
+	keepAlive          = 0x00
+	hello              = 0x01
+	versionUnsupported = 0x02
+	helloComplete      = 0x03
+	entryAssignment    = 0x10
+	entryUpdate        = 0x11
 )
 
 // Types of data that can be sent over NetworkTables.
 const (
-	Boolean      = 0x00
-	Double       = 0x01
-	String       = 0x02
-	BooleanArray = 0x10
-	DoubleArray  = 0x11
-	StringArray  = 0x12
+	tBoolean      = 0x00
+	tDouble       = 0x01
+	tString       = 0x02
+	tBooleanArray = 0x10
+	tDoubleArray  = 0x11
+	tStringArray  = 0x12
 )
 
 // ClientRequestID is the id clients use when requesting the server
 // assign an id to the key.
-const ClientRequestID = 0xFFFF
+const clientRequestID = 0xFFFF
 
 // Errors that can occur while handling connections and dealing with the protocol
 var (
@@ -50,7 +50,7 @@ var (
 // assignmentMessage returns the bytes to send for the assignment
 // message of a given entry.
 func assignmentMessage(e entry) []byte {
-	msg := []byte{EntryAssignment}
+	msg := []byte{entryAssignment}
 	msg = append(msg, getStringBytes(e.Name())...)
 	msg = append(msg, e.Type())
 	msg = append(msg, getUint16Bytes(e.ID())...)
@@ -62,7 +62,7 @@ func assignmentMessage(e entry) []byte {
 // updateMessage returns the bytes to send for the update message of a
 // given entry.
 func updateMessage(e entry) []byte {
-	msg := []byte{EntryUpdate}
+	msg := []byte{entryUpdate}
 	msg = append(msg, getUint16Bytes(e.ID())...)
 	msg = append(msg, getUint16Bytes(uint16(e.SequenceNumber()))...)
 	msg = append(msg, e.dataToBytes()...)

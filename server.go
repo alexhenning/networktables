@@ -217,33 +217,33 @@ func (conn *connection) run() {
 func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 	for b := range c {
 		switch b {
-		case KeepAlive: // BUG(Alex) KeepAlive message currently ignored
-		case Hello:
-			version := getUint16(c)
+		case keepAlive: // BUG(Alex) KeepAlive message currently ignored
+		case hello:
+			v := getUint16(c)
 			log.Printf("Received hello for version %d\n", version)
-			if version == Version {
+			if v == version {
 				for _, entry := range conn.srv.entriesByName {
 					conn.srv.assignEntry(entry, conn)
 				}
-				conn.Write([]byte{HelloComplete})
+				conn.Write([]byte{helloComplete})
 			} else {
-				conn.Write([]byte{VersionUnsupported})
+				conn.Write([]byte{versionUnsupported})
 				done <- ErrUnsupportedVersion
 				return
 			}
-		case VersionUnsupported:
+		case versionUnsupported:
 			done <- ErrUnsupportedVersionMsg
 			return
-		case HelloComplete:
+		case helloComplete:
 			done <- ErrHelloCompleteMsg
 			return
-		case EntryAssignment:
+		case entryAssignment:
 			log.Printf("Received entry assignment\n")
 			if err := conn.handleEntryAssignment(c); err != nil {
 				done <- err
 				return
 			}
-		case EntryUpdate:
+		case entryUpdate:
 			log.Printf("Received entry update\n")
 			if err := conn.handleEntryUpdate(c); err != nil {
 				done <- err
@@ -261,7 +261,7 @@ func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	name, entryType, id, sequence := getString(c), <-c, getUint16(c), sequenceNumber(getUint16(c))
 
-	if id != ClientRequestID {
+	if id != clientRequestID {
 		return ErrAssertiveClient
 	}
 
@@ -269,13 +269,13 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 
 	var e entry
 	switch entryType {
-	case Boolean:
+	case tBoolean:
 		e = newBooleanEntry(name, id, sequence)
-	case Double:
+	case tDouble:
 		e = newDoubleEntry(name, id, sequence)
-	case String:
+	case tString:
 		e = newStringEntry(name, id, sequence)
-	case BooleanArray, DoubleArray, StringArray:
+	case tBooleanArray, tDoubleArray, tStringArray:
 		return ErrArraysUnsupported
 	}
 	e.dataFromBytes(c)

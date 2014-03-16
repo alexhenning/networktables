@@ -67,7 +67,7 @@ type booleanEntry struct {
 }
 
 func newBooleanEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &booleanEntry{baseEntry{name, id, sequence, Boolean, sync.Mutex{}}, false}
+	return &booleanEntry{baseEntry{name, id, sequence, tBoolean, sync.Mutex{}}, false}
 }
 
 func (e *booleanEntry) Value() interface{} {
@@ -89,7 +89,7 @@ type doubleEntry struct {
 }
 
 func newDoubleEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &doubleEntry{baseEntry{name, id, sequence, Double, sync.Mutex{}}, 0}
+	return &doubleEntry{baseEntry{name, id, sequence, tDouble, sync.Mutex{}}, 0}
 }
 
 func (e *doubleEntry) Value() interface{} {
@@ -111,7 +111,7 @@ type stringEntry struct {
 }
 
 func newStringEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &stringEntry{baseEntry{name, id, sequence, String, sync.Mutex{}}, ""}
+	return &stringEntry{baseEntry{name, id, sequence, tString, sync.Mutex{}}, ""}
 }
 
 func (e *stringEntry) Value() interface{} {
