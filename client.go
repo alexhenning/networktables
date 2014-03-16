@@ -11,6 +11,8 @@ import (
 	"sync"
 )
 
+// Table is an interface that allows getting values out of
+// NetworkTables and Subtables in a consistent way.
 type Table interface {
 	GetBoolean(key string) bool
 	GetFloat64(key string) float64
@@ -18,11 +20,13 @@ type Table interface {
 	GetSubtable(key string) Table
 }
 
+// State of the client
 type state int
 
+// The two states the client can be in
 const (
-	connecting = state(0)
-	connected  = state(1)
+	disconnected = state(0)
+	connected    = state(1)
 )
 
 // Client is the structure for creating and handling the NetworkTable
@@ -46,12 +50,14 @@ func NewClient(addr string, listen bool) *Client {
 		entriesByID:   make(map[uint16]entry),
 	}
 	if listen {
-		go client.Listen()
+		go client.ConnectAndListen()
 	}
 	return client
 }
 
-func (cl *Client) Listen() error {
+// ConnectAndListen connects to the NetworkTable server at cl.addr and
+// listens for updates sent to the client.
+func (cl *Client) ConnectAndListen() error {
 	conn, err := net.Dial("tcp", cl.addr)
 	if err != nil {
 		log.Println(err)
@@ -91,6 +97,7 @@ func (cl *Client) Listen() error {
 	}
 }
 
+// hello sends the hello message for the implemented version.
 func (cl *Client) hello() error {
 	data := helloMessage(version)
 	log.Printf("Send \"%X\"", data)
@@ -116,6 +123,12 @@ func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 			return
 		case helloComplete:
 			log.Printf("Received hello complete\n")
+			if cl.state == disconnected {
+				cl.state = connected
+			} else {
+				done <- ErrMultipleHellosCompleted
+				return
+			}
 			// TODO: Send quequed assignments
 		case entryAssignment:
 			log.Printf("Received entry assignment\n")
