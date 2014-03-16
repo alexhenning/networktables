@@ -3,6 +3,10 @@
 
 package networktables
 
+import (
+	"sync"
+)
+
 type entry interface {
 	Name() string
 	ID() uint16
@@ -10,6 +14,8 @@ type entry interface {
 	SetSequenceNumber(sequenceNumber)
 	Type() byte
 	Value() interface{}
+	Lock()
+	Unlock()
 
 	// dataFromBytes updates the entry value based off of the bytes
 	// being received.
@@ -29,6 +35,7 @@ type baseEntry struct {
 	id        uint16
 	sequence  sequenceNumber
 	entryType byte
+	sync.Mutex
 }
 
 func (e *baseEntry) Name() string {
@@ -62,7 +69,7 @@ type booleanEntry struct {
 }
 
 func newBooleanEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &booleanEntry{baseEntry{name, id, sequence, Boolean}, false}
+	return &booleanEntry{baseEntry{name, id, sequence, Boolean, sync.Mutex{}}, false}
 }
 
 func (e *booleanEntry) Value() interface{} {
@@ -84,7 +91,7 @@ type doubleEntry struct {
 }
 
 func newDoubleEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &doubleEntry{baseEntry{name, id, sequence, Double}, 0}
+	return &doubleEntry{baseEntry{name, id, sequence, Double, sync.Mutex{}}, 0}
 }
 
 func (e *doubleEntry) Value() interface{} {
@@ -106,7 +113,7 @@ type stringEntry struct {
 }
 
 func newStringEntry(name string, id uint16, sequence sequenceNumber) entry {
-	return &stringEntry{baseEntry{name, id, sequence, String}, ""}
+	return &stringEntry{baseEntry{name, id, sequence, String, sync.Mutex{}}, ""}
 }
 
 func (e *stringEntry) Value() interface{} {

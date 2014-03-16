@@ -98,6 +98,8 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 // assignEntry sends the assign entry message for an entry to the
 // client.
 func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
+	e.Lock()
+	defer e.Unlock()
 	data := assignmentMessage(e)
 	log.Printf("Send \"%X\"", data)
 	written, err := w.Write(data)
@@ -283,12 +285,14 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	id, sequence := getUint16(c), sequenceNumber(getUint16(c))
 	e := conn.nt.entriesByID[id]
+	e.Lock()
+	defer e.Unlock()
+
 	if !e.SequenceNumber().gt(sequence) {
 		log.Printf("Warning, client updating an entry with an out of date sequence number, ignoring.\n")
 		return nil
 	}
 
-	// BUG(Alex) Make updating entries more threadsafe, possible race condition exists
 	e.SetSequenceNumber(sequence)
 	e.dataFromBytes(c)
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
