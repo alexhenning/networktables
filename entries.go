@@ -97,7 +97,7 @@ func (e *doubleEntry) dataToBytes() []byte {
 	return getDoubleBytes(e.value)
 }
 
-// stringEntry is an entry for a string value
+// stringEntry is an entry for a string value.
 type stringEntry struct {
 	baseEntry
 	value string
@@ -113,4 +113,16 @@ func (e *stringEntry) dataFromBytes(c <-chan byte) {
 
 func (e *stringEntry) dataToBytes() []byte {
 	return getStringBytes(e.value)
+}
+
+// Dividing point for 16 bit sequenece numbers using RFC 1982.
+const sequenceNumberDividingPoint = 32768
+
+// A value representing a sequence number.
+type sequenceNumber uint16
+
+// gt returns whether or not one sequenceNumber is greater than another.
+func (s sequenceNumber) gt(other sequenceNumber) bool {
+	return (s < other && other-s < sequenceNumberDividingPoint) ||
+		(s > other && s-other > sequenceNumberDividingPoint)
 }
