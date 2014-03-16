@@ -116,8 +116,7 @@ func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 			return
 		case helloComplete:
 			log.Printf("Received hello complete\n")
-			done <- ErrHelloCompleteMsg
-			return
+			// TODO: Send quequed assignments
 		case entryAssignment:
 			log.Printf("Received entry assignment\n")
 			if err := cl.handleEntryAssignment(c); err != nil {
@@ -126,10 +125,10 @@ func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 			}
 		case entryUpdate:
 			log.Printf("Received entry update\n")
-			// if err := cl.handleEntryUpdate(c); err != nil {
-			// 	done <- err
-			// 	return
-			// }
+			if err := cl.handleEntryUpdate(c); err != nil {
+				done <- err
+				return
+			}
 		default:
 			done <- errors.New(fmt.Sprintf("networktables: received unexpected byte \"%X\"", b))
 			return
@@ -149,14 +148,43 @@ func (cl *Client) handleEntryAssignment(c <-chan byte) error {
 	e.dataFromBytes(c)
 
 	if _, exists := cl.entriesByName[name]; !exists {
-		// cl.set(e)
+		cl.set(e)
 	} else {
-		return errors.New("Warning, client requesting an already existing key.\n")
+		return errors.New("Warning, server assigning an already existing key.\n")
 	}
 
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
 		name, entryType, id, sequence, e.Value())
 	return nil
+}
+
+// handleEntryUpdate handles entry update messages sent to the
+// client and updates the table.
+func (cl *Client) handleEntryUpdate(c <-chan byte) error {
+	id, sequence := getUint16(c), sequenceNumber(getUint16(c))
+	e := cl.entriesByID[id]
+	e.Lock()
+	defer e.Unlock()
+
+	if !e.SequenceNumber().gt(sequence) {
+		log.Printf("Warning, client updating an entry with an out of date sequence number, ignoring.\n")
+		return nil
+	}
+
+	e.SetSequenceNumber(sequence)
+	e.dataFromBytes(c)
+	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
+		e.Name(), e.Type(), e.ID(), e.SequenceNumber(), e.Value())
+	return nil
+}
+
+// set stores an entry so that it can be referenced by ID or name in a
+// manner that is safe to use from multiple goroutines.
+func (cl *Client) set(e entry) {
+	cl.m.Lock()
+	defer cl.m.Unlock()
+	cl.entriesByName[e.Name()] = e
+	cl.entriesByID[e.ID()] = e
 }
 
 // Write is a allows the connection to be written to safely from
