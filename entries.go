@@ -26,8 +26,6 @@ type entry interface {
 	dataToBytes() []byte
 }
 
-// BUG(Alex) Entries are not be safe to access from multiple goroutines
-
 // baseEntry abstracts out the commonalities between different entry
 // types, including name, id, sequence number and type.
 type baseEntry struct {
