@@ -133,6 +133,8 @@ func (nt *NetworkTable) updateEntryAll(e entry) {
 	}
 }
 
+// set stores an entry so that it can be referenced by ID or name in a
+// manner that is safe to use from multiple goroutines.
 func (nt *NetworkTable) set(e entry) {
 	nt.m.Lock()
 	defer nt.m.Unlock()
@@ -140,7 +142,7 @@ func (nt *NetworkTable) set(e entry) {
 	nt.entriesByID[e.ID()] = e
 }
 
-// connection handles a single client connection
+// connection handles a single client connection.
 type connection struct {
 	rwc net.Conn
 	nt  *NetworkTable
@@ -157,6 +159,7 @@ func (conn *connection) run() {
 	defer close(done)
 	defer close(c)
 	go conn.processBytes(done, c)
+
 	for {
 		data := make([]byte, 2048)
 		n, err := conn.rwc.Read(data)
@@ -237,25 +240,24 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	}
 
 	id, conn.nt.nextID = conn.nt.nextID, conn.nt.nextID+1 // BUG(Alex) Make getting the next id threadsafe
-	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
 
+	var e entry
 	switch entryType {
 	case Boolean:
-		b := getBoolean(c)
-		log.Printf("\tValue: %t\n", b)
-		conn.nt.set(newBooleanEntry(name, b, id, sequence))
+		e = newBooleanEntry(name, id, sequence)
 	case Double:
-		d := getDouble(c)
-		log.Printf("\tValue: %f\n", d)
-		conn.nt.set(newDoubleEntry(name, d, id, sequence))
+		e = newDoubleEntry(name, id, sequence)
 	case String:
-		s := getString(c)
-		log.Printf("\tValue: %s\n", s)
-		conn.nt.set(newStringEntry(name, s, id, sequence))
+		e = newStringEntry(name, id, sequence)
 	case BooleanArray, DoubleArray, StringArray:
 		return ErrArraysUnsupported
 	}
-	conn.nt.assignEntryAll(conn.nt.entriesByName[name])
+	e.dataFromBytes(c)
+	conn.nt.set(e)
+
+	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
+		name, entryType, id, sequence, e.Value())
+	conn.nt.assignEntryAll(e)
 	return nil
 }
 
@@ -272,8 +274,8 @@ func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	// BUG(Alex) Make updating entries more threadsafe, possible race condition exists
 	e.SetSequenceNumber(sequence)
 	e.dataFromBytes(c)
-	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n",
-		e.Name(), e.Type(), e.ID(), e.SequenceNumber())
+	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
+		e.Name(), e.Type(), e.ID(), e.SequenceNumber(), e.Value())
 	conn.nt.updateEntryAll(e)
 	return nil
 }

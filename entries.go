@@ -9,6 +9,7 @@ type entry interface {
 	SequenceNumber() sequenceNumber
 	SetSequenceNumber(sequenceNumber)
 	Type() byte
+	Value() interface{}
 
 	// dataFromBytes updates the entry value based off of the bytes
 	// being received.
@@ -60,8 +61,12 @@ type booleanEntry struct {
 	value bool
 }
 
-func newBooleanEntry(name string, value bool, id uint16, sequence sequenceNumber) entry {
-	return &booleanEntry{baseEntry{name, id, sequence, Boolean}, value}
+func newBooleanEntry(name string, id uint16, sequence sequenceNumber) entry {
+	return &booleanEntry{baseEntry{name, id, sequence, Boolean}, false}
+}
+
+func (e *booleanEntry) Value() interface{} {
+	return e.value
 }
 
 func (e *booleanEntry) dataFromBytes(c <-chan byte) {
@@ -78,8 +83,12 @@ type doubleEntry struct {
 	value float64
 }
 
-func newDoubleEntry(name string, value float64, id uint16, sequence sequenceNumber) entry {
-	return &doubleEntry{baseEntry{name, id, sequence, Double}, value}
+func newDoubleEntry(name string, id uint16, sequence sequenceNumber) entry {
+	return &doubleEntry{baseEntry{name, id, sequence, Double}, 0}
+}
+
+func (e *doubleEntry) Value() interface{} {
+	return e.value
 }
 
 func (e *doubleEntry) dataFromBytes(c <-chan byte) {
@@ -96,8 +105,12 @@ type stringEntry struct {
 	value string
 }
 
-func newStringEntry(name string, value string, id uint16, sequence sequenceNumber) entry {
-	return &stringEntry{baseEntry{name, id, sequence, String}, value}
+func newStringEntry(name string, id uint16, sequence sequenceNumber) entry {
+	return &stringEntry{baseEntry{name, id, sequence, String}, ""}
+}
+
+func (e *stringEntry) Value() interface{} {
+	return e.value
 }
 
 func (e *stringEntry) dataFromBytes(c <-chan byte) {
