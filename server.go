@@ -26,7 +26,7 @@ import (
 //	    networktables.ListenAndServe(":1735")
 //	}
 func ListenAndServe(addr string) error {
-	nt := &NetworkTable{addr, 1, make(map[string]entry), nil, sync.Mutex{}}
+	nt := &NetworkTable{addr, 1, make(map[string]entry), make(map[uint16]entry), nil, sync.Mutex{}}
 	return nt.ListenAndServe()
 }
 
@@ -34,11 +34,12 @@ func ListenAndServe(addr string) error {
 // NetworkTable server. If using the ListenAndServe function, it is
 // not necessary to create this manually.
 type NetworkTable struct {
-	addr        string
-	nextID      uint16
-	entries     map[string]entry
-	connections []*connection
-	m           sync.Mutex
+	addr          string
+	nextID        uint16
+	entriesByName map[string]entry
+	entriesByID   map[uint16]entry
+	connections   []*connection
+	m             sync.Mutex
 }
 
 // ListenAndServe listens on the TCP network address nt.addr and then
@@ -105,10 +106,29 @@ func (nt *NetworkTable) assignEntryAll(e entry) {
 	}
 }
 
-func (nt *NetworkTable) set(key string, e entry) {
+func (nt *NetworkTable) updateEntry(e entry, w io.Writer) {
+	data := updateMessage(e)
+	log.Printf("Send \"%X\"", data)
+	written, err := w.Write(data)
+	if err != nil {
+		log.Println(err)
+	}
+	if written != len(data) {
+		log.Printf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written)
+	}
+}
+
+func (nt *NetworkTable) updateEntryAll(e entry) {
+	for _, conn := range nt.connections {
+		nt.updateEntry(e, conn)
+	}
+}
+
+func (nt *NetworkTable) set(e entry) {
 	nt.m.Lock()
 	defer nt.m.Unlock()
-	nt.entries[key] = e
+	nt.entriesByName[e.Name()] = e
+	nt.entriesByID[e.ID()] = e
 }
 
 // connection handles a single client connection
@@ -148,12 +168,12 @@ func (conn *connection) run() {
 func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 	for b := range c {
 		switch b {
-		case KeepAlive:
+		case KeepAlive: // BUG(Alex) KeepAlive message currently ignored
 		case Hello:
 			version := getUint16(c)
 			log.Printf("Received hello for version %d\n", version)
 			if version == Version {
-				for _, entry := range conn.nt.entries {
+				for _, entry := range conn.nt.entriesByName {
 					conn.nt.assignEntry(entry, conn)
 				}
 				conn.Write([]byte{HelloComplete})
@@ -176,6 +196,10 @@ func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 			}
 		case EntryUpdate:
 			log.Printf("Received entry update\n")
+			if err := conn.handleEntryUpdate(c); err != nil {
+				done <- err
+				return
+			}
 		default:
 			done <- errors.New(fmt.Sprintf("networktables: received unexpected byte \"%X\"", b))
 			return
@@ -184,9 +208,10 @@ func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 }
 
 func (conn *connection) handleEntryAssignment(c <-chan byte) error {
-	name, entryType, id, sequence := getString(c), <-c, getUint16(c), getUint16(c)
+	name, entryType, id, sequence := getString(c), <-c, getUint16(c), sequenceNumber(getUint16(c))
 
-	if _, exists := conn.nt.entries[name]; exists {
+	if _, exists := conn.nt.entriesByName[name]; exists {
+		// BUG(Alex) Fix race condition when two clients create an entry at the same time
 		log.Printf("Warning, client requesting an already existing key, ignoring.\n")
 		return nil
 	}
@@ -194,26 +219,43 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 		return ErrAssertiveClient
 	}
 
-	id, conn.nt.nextID = conn.nt.nextID, conn.nt.nextID+1
+	id, conn.nt.nextID = conn.nt.nextID, conn.nt.nextID+1 // BUG(Alex) Make getting the next id threadsafe
 	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n", name, entryType, id, sequence)
 
 	switch entryType {
 	case Boolean:
 		b := getBoolean(c)
 		log.Printf("\tValue: %t\n", b)
-		conn.nt.set(name, newBooleanEntry(name, b, id, sequence))
+		conn.nt.set(newBooleanEntry(name, b, id, sequence))
 	case Double:
 		d := getDouble(c)
 		log.Printf("\tValue: %f\n", d)
-		conn.nt.set(name, newDoubleEntry(name, d, id, sequence))
+		conn.nt.set(newDoubleEntry(name, d, id, sequence))
 	case String:
 		s := getString(c)
 		log.Printf("\tValue: %s\n", s)
-		conn.nt.set(name, newStringEntry(name, s, id, sequence))
+		conn.nt.set(newStringEntry(name, s, id, sequence))
 	case BooleanArray, DoubleArray, StringArray:
 		return ErrArraysUnsupported
 	}
-	conn.nt.assignEntryAll(conn.nt.entries[name])
+	conn.nt.assignEntryAll(conn.nt.entriesByName[name])
+	return nil
+}
+
+func (conn *connection) handleEntryUpdate(c <-chan byte) error {
+	id, sequence := getUint16(c), sequenceNumber(getUint16(c))
+	e := conn.nt.entriesByID[id]
+	if !e.SequenceNumber().gt(sequence) {
+		log.Printf("Warning, client updating an entry with an out of date sequence number, ignoring.\n")
+		return nil
+	}
+
+	// BUG(Alex) Make updating entries more threadsafe, possible race condition exists
+	e.SetSequenceNumber(sequence)
+	e.dataFromBytes(c)
+	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d\n",
+		e.Name(), e.Type(), e.ID(), e.SequenceNumber())
+	conn.nt.updateEntryAll(e)
 	return nil
 }
 
