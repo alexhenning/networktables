@@ -27,12 +27,7 @@ import (
 //	    networktables.ListenAndServe(":1735")
 //	}
 func ListenAndServe(addr string) error {
-	srv := &Server{
-		addr:          addr,
-		entriesByName: make(map[string]entry),
-		entriesByID:   make(map[uint16]entry),
-	}
-	return srv.ListenAndServe()
+	return NewServer(addr).ListenAndServe()
 }
 
 // NetworkTable is the structure for creating and handling the
@@ -46,6 +41,16 @@ type Server struct {
 	connections   []*connection
 	m             sync.Mutex
 	idM           sync.Mutex
+}
+
+// NewServer creates a new server object that can be used to listen
+// and serve clients connected to the given address.
+func NewServer(addr string) *Server {
+	return &Server{
+		addr:          addr,
+		entriesByName: make(map[string]entry),
+		entriesByID:   make(map[uint16]entry),
+	}
 }
 
 // ListenAndServe listens on the TCP network address srv.addr and then
