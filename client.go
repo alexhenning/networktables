@@ -68,6 +68,7 @@ func (cl *Client) ConnectAndListen() error {
 	log.Printf("Got new connection to %s", conn.RemoteAddr().String())
 
 	err = cl.hello()
+	// BUG(Alex) KeepAlive message currently not sent
 	if err != nil {
 		return err
 	}
@@ -114,7 +115,7 @@ func (cl *Client) hello() error {
 func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 	for b := range c {
 		switch b {
-		case keepAlive: // BUG(Alex) KeepAlive message currently ignored
+		case keepAlive:
 		case hello:
 			done <- ErrUnsupportedHelloMsg
 			return
@@ -129,7 +130,7 @@ func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
 				done <- ErrMultipleHellosCompleted
 				return
 			}
-			// TODO: Send quequed assignments
+			// TODO: Send queued assignments
 		case entryAssignment:
 			log.Printf("Received entry assignment\n")
 			if err := cl.handleEntryAssignment(c); err != nil {
@@ -208,12 +209,23 @@ func (cl *Client) Write(b []byte) (int, error) {
 	return cl.conn.Write(b)
 }
 
+func (cl *Client) get(key string) (entry, error) {
+	if cl.state != connected {
+		return nil, ErrHelloNotDone
+	}
+	e, ok := cl.entriesByName[key]
+	if !ok {
+		return nil, ErrNoSuchKey
+	}
+	return e, nil
+}
+
 // GetBoolean return the boolean value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetBoolean(key string) (bool, error) {
-	e, ok := cl.entriesByName[key]
-	if !ok {
-		return false, ErrNoSuchKey
+	e, err := cl.get(key)
+	if err != nil {
+		return false, err
 	}
 	e.Lock()
 	defer e.Unlock()
@@ -223,4 +235,38 @@ func (cl *Client) GetBoolean(key string) (bool, error) {
 	}
 
 	return e.Value().(bool), nil
+}
+
+// GetFloat64 return the float64 value associated with the key if
+// possible. This method is safe to use from multiple goroutines.
+func (cl *Client) GetFloat64(key string) (float64, error) {
+	e, err := cl.get(key)
+	if err != nil {
+		return 0, err
+	}
+	e.Lock()
+	defer e.Unlock()
+
+	if e.Type() != tDouble {
+		return 0, ErrWrongType
+	}
+
+	return e.Value().(float64), nil
+}
+
+// GetString return the string value associated with the key if
+// possible. This method is safe to use from multiple goroutines.
+func (cl *Client) GetString(key string) (string, error) {
+	e, err := cl.get(key)
+	if err != nil {
+		return "", err
+	}
+	e.Lock()
+	defer e.Unlock()
+
+	if e.Type() != tDouble {
+		return "", ErrWrongType
+	}
+
+	return e.Value().(string), nil
 }

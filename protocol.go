@@ -52,8 +52,9 @@ var (
 
 // Errors that can occur while trying to get a value from a client.
 var (
-	ErrNoSuchKey = errors.New("networktables: no such key exists")
-	ErrWrongType = errors.New("networktables: key exists but contains the wrong type of data")
+	ErrNoSuchKey    = errors.New("networktables: no such key exists")
+	ErrWrongType    = errors.New("networktables: key exists but contains the wrong type of data")
+	ErrHelloNotDone = errors.New("networktables: server has not finished sending hello to client")
 )
 
 // helloMessage returns the bytes to send for the hello
