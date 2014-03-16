@@ -1,12 +1,13 @@
+// This file contains the necessary methods and data structures to run
+// a NetworkTables server that can handle multiple clients.
+
 package networktables
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net"
 	"sync"
 	"time"
@@ -88,6 +89,8 @@ func (nt *NetworkTable) Serve(listener net.Listener) error {
 	return nil
 }
 
+// assignEntry sends the assign entry message for an entry to the
+// client.
 func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
 	data := assignmentMessage(e)
 	log.Printf("Send \"%X\"", data)
@@ -100,12 +103,16 @@ func (nt *NetworkTable) assignEntry(e entry, w io.Writer) {
 	}
 }
 
+// assignEntryAll sends the assign entry message for an entry to all
+// connected clients.
 func (nt *NetworkTable) assignEntryAll(e entry) {
 	for _, conn := range nt.connections {
 		nt.assignEntry(e, conn)
 	}
 }
 
+// updateEntry sends the update entry message for an entry to the
+// client.
 func (nt *NetworkTable) updateEntry(e entry, w io.Writer) {
 	data := updateMessage(e)
 	log.Printf("Send \"%X\"", data)
@@ -118,6 +125,8 @@ func (nt *NetworkTable) updateEntry(e entry, w io.Writer) {
 	}
 }
 
+// updateEntryAll sends the update entry message for an entry to all
+// connected clients.
 func (nt *NetworkTable) updateEntryAll(e entry) {
 	for _, conn := range nt.connections {
 		nt.updateEntry(e, conn)
@@ -138,6 +147,9 @@ type connection struct {
 	m   sync.Mutex
 }
 
+// run handles the connection, processing all incoming bytes from a
+// client until the connection is either closed remotely or an error
+// occurs, such as invalid values being sent.
 func (conn *connection) run() {
 	defer conn.rwc.Close()
 	log.Printf("Got new connection from %s", conn.rwc.RemoteAddr().String())
@@ -165,6 +177,9 @@ func (conn *connection) run() {
 	}
 }
 
+// processBytes takes the stream of bytes on the channel and processes
+// them, negotiating the hello exchange and receiving entry updates
+// from the client.
 func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 	for b := range c {
 		switch b {
@@ -207,6 +222,8 @@ func (conn *connection) processBytes(done chan<- error, c <-chan byte) {
 	}
 }
 
+// handleEntryAssignment handles entry assignment messages sent from
+// the client, updating the table and notifying other connected clients.
 func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	name, entryType, id, sequence := getString(c), <-c, getUint16(c), sequenceNumber(getUint16(c))
 
@@ -242,6 +259,8 @@ func (conn *connection) handleEntryAssignment(c <-chan byte) error {
 	return nil
 }
 
+// handleEntryUpdate handles entry update messages sent from the
+// client, updating the table and notifying other connected clients.
 func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	id, sequence := getUint16(c), sequenceNumber(getUint16(c))
 	e := conn.nt.entriesByID[id]
@@ -259,60 +278,10 @@ func (conn *connection) handleEntryUpdate(c <-chan byte) error {
 	return nil
 }
 
+// Write is a allows the connection to be written to safely from
+// multiple goroutines, blocking if necessary.
 func (conn *connection) Write(b []byte) (int, error) {
 	conn.m.Lock()
 	defer conn.m.Unlock()
 	return conn.rwc.Write(b)
-}
-
-// Encoding and decoding methods
-
-func getUint16(c <-chan byte) uint16 {
-	return binary.BigEndian.Uint16([]byte{<-c, <-c})
-}
-
-func getBoolean(c <-chan byte) bool {
-	return (<-c) != 0x00
-}
-
-func getDouble(c <-chan byte) float64 {
-	bits := binary.BigEndian.Uint64([]byte{<-c, <-c, <-c, <-c, <-c, <-c, <-c, <-c})
-	return math.Float64frombits(bits)
-}
-
-func getString(c <-chan byte) string {
-	length := getUint16(c)
-	bytes := make([]byte, length, length)
-	for i := uint16(0); i < length; i++ {
-		bytes[i] = <-c
-	}
-	return string(bytes)
-}
-
-func getUint16Bytes(val uint16) []byte {
-	bytes := make([]byte, 2, 2)
-	binary.BigEndian.PutUint16(bytes, val)
-	return bytes
-}
-
-func getBooleanByte(val bool) byte {
-	if val {
-		return 0x01
-	} else {
-		return 0x00
-	}
-}
-
-func getDoubleBytes(val float64) []byte {
-	bytes := make([]byte, 8, 8)
-	bits := math.Float64bits(val)
-	binary.BigEndian.PutUint64(bytes, bits)
-	return bytes
-}
-
-func getStringBytes(val string) []byte {
-	bytes := make([]byte, 0, 2+len(val))
-	bytes = append(bytes, getUint16Bytes((uint16)(len(val)))...)
-	bytes = append(bytes, []byte(val)...)
-	return bytes
 }

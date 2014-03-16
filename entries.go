@@ -1,3 +1,6 @@
+// This file contains the types and methods for handling different
+// entry types in NetworkTables
+
 package networktables
 
 type entry interface {
@@ -6,9 +9,17 @@ type entry interface {
 	SequenceNumber() sequenceNumber
 	SetSequenceNumber(sequenceNumber)
 	Type() byte
+
+	// dataFromBytes updates the entry value based off of the bytes
+	// being received.
 	dataFromBytes(<-chan byte)
+
+	// dataToBytes returns the bytes representing the current value of
+	// the entry in a form that can be sent over the network.
 	dataToBytes() []byte
 }
+
+// BUG(Alex) Entries are not be safe to access from multiple goroutines
 
 // baseEntry abstracts out the commonalities between different entry
 // types, including name, id, sequence number and type.
@@ -41,24 +52,6 @@ func (e *baseEntry) Type() byte {
 
 func (e *baseEntry) dataToBytes() []byte {
 	return []byte{}
-}
-
-func assignmentMessage(e entry) []byte {
-	msg := []byte{EntryAssignment}
-	msg = append(msg, getStringBytes(e.Name())...)
-	msg = append(msg, e.Type())
-	msg = append(msg, getUint16Bytes(e.ID())...)
-	msg = append(msg, getUint16Bytes(uint16(e.SequenceNumber()))...)
-	msg = append(msg, e.dataToBytes()...)
-	return msg
-}
-
-func updateMessage(e entry) []byte {
-	msg := []byte{EntryUpdate}
-	msg = append(msg, getUint16Bytes(e.ID())...)
-	msg = append(msg, getUint16Bytes(uint16(e.SequenceNumber()))...)
-	msg = append(msg, e.dataToBytes()...)
-	return msg
 }
 
 // booleanEntry is an entry for a boolean value
