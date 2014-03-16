@@ -40,12 +40,21 @@ const clientRequestID = 0xFFFF
 
 // Errors that can occur while handling connections and dealing with the protocol
 var (
+	ErrUnsupportedHelloMsg   = errors.New("networktables: server unexpectedly sent hello message")
 	ErrUnsupportedVersion    = errors.New("networktables: unsupported client version tried to connect")
 	ErrUnsupportedVersionMsg = errors.New("networktables: server shouldn't get unsupported version message")
 	ErrHelloCompleteMsg      = errors.New("networktables: server shouldn't get hello complete message")
 	ErrAssertiveClient       = errors.New("networktables: assertive client trying to select entry ID")
 	ErrArraysUnsupported     = errors.New("networktables: server currently doesn't support array types")
 )
+
+// helloMessage returns the bytes to send for the hello
+// message of the given version.
+func helloMessage(version uint16) []byte {
+	msg := []byte{hello}
+	msg = append(msg, getUint16Bytes(version)...)
+	return msg
+}
 
 // assignmentMessage returns the bytes to send for the assignment
 // message of a given entry.

@@ -1,0 +1,168 @@
+// This file contains the necessary methods and data structures to run
+// a NetworkTables client that can connect to a server.
+
+package networktables
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"sync"
+)
+
+type Table interface {
+	GetBoolean(key string) bool
+	GetFloat64(key string) float64
+	GetString(key string) string
+	GetSubtable(key string) Table
+}
+
+type state int
+
+const (
+	connecting = state(0)
+	connected  = state(1)
+)
+
+// Client is the structure for creating and handling the NetworkTable
+// client. The recommended way to create a new client is through
+// networktables.NewClient().
+type Client struct {
+	addr          string
+	entriesByName map[string]entry
+	entriesByID   map[uint16]entry
+	state         state
+	conn          net.Conn
+	m             sync.Mutex
+}
+
+// NewServer creates a new server object that can be used to listen
+// and serve clients connected to the given address.
+func NewClient(addr string, listen bool) *Client {
+	client := &Client{
+		addr:          addr,
+		entriesByName: make(map[string]entry),
+		entriesByID:   make(map[uint16]entry),
+	}
+	if listen {
+		go client.Listen()
+	}
+	return client
+}
+
+func (cl *Client) Listen() error {
+	conn, err := net.Dial("tcp", cl.addr)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+	defer conn.Close()
+	cl.conn = conn
+	log.Printf("Got new connection to %s", conn.RemoteAddr().String())
+
+	err = cl.hello()
+	if err != nil {
+		return err
+	}
+
+	done, c := make(chan error), make(chan byte)
+	defer close(done)
+	defer close(c)
+	go cl.processBytes(done, c)
+
+	for {
+		data := make([]byte, 2048)
+		n, err := conn.Read(data)
+		if err != nil {
+			log.Printf("networktables: %s\n", err)
+			return err
+		}
+		for i := 0; i < n; i++ {
+			select {
+			case c <- data[i]:
+			case err := <-done:
+				if err != nil {
+					log.Println(err)
+				}
+				return err
+			}
+		}
+	}
+}
+
+func (cl *Client) hello() error {
+	data := helloMessage(version)
+	log.Printf("Send \"%X\"", data)
+	written, err := cl.Write(data)
+	if written != len(data) && err == nil {
+		err = errors.New(fmt.Sprintf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written))
+	}
+	return err
+}
+
+// processBytes takes the stream of bytes on the channel and processes
+// them, negotiating the hello exchange and receiving entry updates
+// from the client.
+func (cl *Client) processBytes(done chan<- error, c <-chan byte) {
+	for b := range c {
+		switch b {
+		case keepAlive: // BUG(Alex) KeepAlive message currently ignored
+		case hello:
+			done <- ErrUnsupportedHelloMsg
+			return
+		case versionUnsupported:
+			done <- ErrUnsupportedVersionMsg
+			return
+		case helloComplete:
+			log.Printf("Received hello complete\n")
+			done <- ErrHelloCompleteMsg
+			return
+		case entryAssignment:
+			log.Printf("Received entry assignment\n")
+			if err := cl.handleEntryAssignment(c); err != nil {
+				done <- err
+				return
+			}
+		case entryUpdate:
+			log.Printf("Received entry update\n")
+			// if err := cl.handleEntryUpdate(c); err != nil {
+			// 	done <- err
+			// 	return
+			// }
+		default:
+			done <- errors.New(fmt.Sprintf("networktables: received unexpected byte \"%X\"", b))
+			return
+		}
+	}
+}
+
+// handleEntryAssignment handles entry assignment messages sent to the
+// client, updating the table.
+func (cl *Client) handleEntryAssignment(c <-chan byte) error {
+	name, entryType, id, sequence := getString(c), <-c, getUint16(c), sequenceNumber(getUint16(c))
+
+	e, err := newEntry(name, id, sequence, entryType)
+	if err != nil {
+		return err
+	}
+	e.dataFromBytes(c)
+
+	if _, exists := cl.entriesByName[name]; !exists {
+		// cl.set(e)
+	} else {
+		return errors.New("Warning, client requesting an already existing key.\n")
+	}
+
+	log.Printf("Name: %s Type: %X, ID: %X, Sequence Number: %d, Value %v\n",
+		name, entryType, id, sequence, e.Value())
+	return nil
+}
+
+// Write is a allows the connection to be written to safely from
+// multiple goroutines, blocking if necessary.
+func (cl *Client) Write(b []byte) (int, error) {
+	cl.m.Lock()
+	defer cl.m.Unlock()
+	return cl.conn.Write(b)
+}
