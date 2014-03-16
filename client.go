@@ -43,6 +43,7 @@ type Client struct {
 	toSend        []entry
 	state         state
 	conn          net.Conn
+	writeM        sync.Mutex
 	m             sync.Mutex
 }
 
@@ -107,7 +108,7 @@ func (cl *Client) ConnectAndListen() error {
 // hello sends the hello message for the implemented version.
 func (cl *Client) hello() error {
 	data := helloMessage(version)
-	written, err := cl.Write(data)
+	written, err := cl.write(data)
 	if written != len(data) && err == nil {
 		err = errors.New(fmt.Sprintf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written))
 	}
@@ -118,7 +119,7 @@ func (cl *Client) hello() error {
 // server.
 func (cl *Client) updateEntry(e entry) {
 	data := updateMessage(e)
-	written, err := cl.conn.Write(data)
+	written, err := cl.write(data)
 	if err != nil {
 		log.Println(err)
 	}
@@ -239,9 +240,9 @@ func (cl *Client) sendUpdates(done chan<- error, ticks <-chan time.Time) {
 
 // Write is a allows the connection to be written to safely from
 // multiple goroutines, blocking if necessary.
-func (cl *Client) Write(b []byte) (int, error) {
-	cl.m.Lock()
-	defer cl.m.Unlock()
+func (cl *Client) write(b []byte) (int, error) {
+	cl.writeM.Lock()
+	defer cl.writeM.Unlock()
 	return cl.conn.Write(b)
 }
 
