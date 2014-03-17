@@ -40,7 +40,7 @@ type Client struct {
 	addr          string
 	entriesByName map[string]entry
 	entriesByID   map[uint16]entry
-	toSend        []entry
+	toSend        map[string]entry
 	state         state
 	conn          net.Conn
 	writeM        sync.Mutex
@@ -50,15 +50,16 @@ type Client struct {
 // NewServer creates a new server object that can be used to listen
 // and serve clients connected to the given address.
 func NewClient(addr string, listen bool) *Client {
-	client := &Client{
+	cl := &Client{
 		addr:          addr,
 		entriesByName: make(map[string]entry),
 		entriesByID:   make(map[uint16]entry),
+		toSend:        make(map[string]entry),
 	}
 	if listen {
-		go client.ConnectAndListen()
+		go cl.ConnectAndListen()
 	}
-	return client
+	return cl
 }
 
 // ConnectAndListen connects to the NetworkTable server at cl.addr and
@@ -74,7 +75,6 @@ func (cl *Client) ConnectAndListen() error {
 	log.Printf("Got new connection to %s", conn.RemoteAddr().String())
 
 	err = cl.hello()
-	// BUG(Alex) KeepAlive message currently not sent
 	if err != nil {
 		return err
 	}
@@ -236,7 +236,7 @@ func (cl *Client) sendUpdates(done chan<- error, ticks <-chan time.Time) {
 			cl.updateEntry(e)
 			e.Unlock()
 		}
-		cl.toSend = nil
+		cl.toSend = make(map[string]entry)
 
 		cl.m.Unlock()
 	}
@@ -352,7 +352,7 @@ func (cl *Client) put(key string, val interface{}, entryType byte) error {
 	c := clone(e)
 	c.SetValue(val)
 	c.SetSequenceNumber(e.SequenceNumber() + 1)
-	cl.toSend = append(cl.toSend, c)
+	cl.toSend[c.Name()] = c
 	return nil
 }
 
