@@ -79,11 +79,14 @@ func (cl *Client) ConnectAndListen() error {
 		return err
 	}
 
-	done, c, ticks := make(chan error), make(chan byte), time.Tick(20*time.Millisecond)
+	done, c := make(chan error), make(chan byte)
 	defer close(done)
 	defer close(c)
 	go cl.processBytes(done, c)
+
+	ticks, kaTicks := time.Tick(20*time.Millisecond), time.Tick(time.Second)
 	go cl.sendUpdates(done, ticks)
+	go cl.sendKeepAlives(done, kaTicks)
 
 	for {
 		data := make([]byte, 2048)
@@ -224,6 +227,7 @@ func (cl *Client) set(e entry) {
 
 // sendUpdates periodically sends the updates at a regular rate.
 func (cl *Client) sendUpdates(done chan<- error, ticks <-chan time.Time) {
+	// BUG(Alex) sendUpdates may run even after connection is lost.
 	for _ = range ticks {
 		cl.m.Lock()
 
@@ -235,6 +239,24 @@ func (cl *Client) sendUpdates(done chan<- error, ticks <-chan time.Time) {
 		cl.toSend = nil
 
 		cl.m.Unlock()
+	}
+}
+
+// sendKeepAlives periodically sends the keep-alive message
+func (cl *Client) sendKeepAlives(done chan<- error, ticks <-chan time.Time) {
+	for _ = range ticks {
+		if cl.state == connected {
+			data := []byte{keepAlive}
+			written, err := cl.write(data)
+			if written != len(data) && err == nil {
+				err = errors.New(fmt.Sprintf("Tried to write %d bytes, but only wrote %d bytes.",
+					len(data), written))
+			}
+			if err != nil {
+				done <- err
+				return
+			}
+		}
 	}
 }
 

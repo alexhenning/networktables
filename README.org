@@ -18,11 +18,10 @@ To run the provided main server existing
 : $ go run main-server/server.go
 
 * Limitations
-- Server can't act as client
-- Client doesn't support listeners
-- Client doesn't send keep-alives
 - Client can't create new key, can only modify existing keys
+- Client doesn't support listener
 - Client doesn't compress multiple updates to the same key
 - Client doesn't support subtables
 - Client and Server don't support array types
 - Minimal testing
+- Server can't act as clients
