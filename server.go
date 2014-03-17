@@ -98,7 +98,6 @@ func (srv *Server) Serve(listener net.Listener) error {
 		srv.m.Unlock()
 		go conn.run()
 	}
-	return nil
 }
 
 // assignEntry sends the assign entry message for an entry to the
