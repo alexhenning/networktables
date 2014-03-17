@@ -118,6 +118,20 @@ func (cl *Client) hello() error {
 	return err
 }
 
+// assignEntry sends the assign entry message for an entry to the
+// cliesrv.
+func (cl *Client) assignEntry(e entry) {
+	data := assignmentMessage(e)
+	log.Printf("Send \"%X\"", data)
+	written, err := cl.write(data)
+	if err != nil {
+		log.Println(err)
+	}
+	if written != len(data) {
+		log.Printf("Tried to write %d bytes, but only wrote %d bytes.", len(data), written)
+	}
+}
+
 // updateEntry sends the update entry message for an entry to the
 // server.
 func (cl *Client) updateEntry(e entry) {
@@ -335,7 +349,13 @@ func (cl *Client) GetString(key string) (string, error) {
 // put wraps the common functionality of the various put methods.
 func (cl *Client) put(key string, val interface{}, entryType byte) error {
 	e, err := cl.get(key)
-	if err != nil {
+	if err == ErrNoSuchKey {
+		err = nil
+		e, err = newEntry(key, clientRequestID, sequenceNumber(0), entryType)
+		e.SetValue(val)
+		cl.assignEntry(e)
+		return err
+	} else if err != nil {
 		return err
 	}
 	cl.m.Lock()
@@ -347,8 +367,6 @@ func (cl *Client) put(key string, val interface{}, entryType byte) error {
 		return ErrWrongType
 	}
 
-	// BUG(Alex) Doesn't handle entry assignments
-	// BUG(Alex) Sends duplicates if updated too often
 	c := clone(e)
 	c.SetValue(val)
 	c.SetSequenceNumber(e.SequenceNumber() + 1)

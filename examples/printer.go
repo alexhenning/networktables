@@ -21,11 +21,10 @@ func main() {
 			log.Println(err)
 		}
 
-		s := "test"
-		// s, err := client.GetString("/str")
-		// if err != nil {
-		// 	log.Println(err)
-		// }
+		s, err := client.GetString("/str")
+		if err != nil {
+			log.Println(err)
+		}
 
 		log.Printf("%t, %f, %s\n", b, f, s)
 
@@ -39,10 +38,10 @@ func main() {
 			log.Println(err)
 		}
 
-		// err = client.PutString("/str", "Alex")
-		// if err != nil {
-		// 	log.Println(err)
-		// }
+		err = client.PutString("/str", "Alex")
+		if err != nil {
+			log.Println(err)
+		}
 
 		<-tick
 	}
