@@ -298,7 +298,7 @@ func (cl *Client) get(key string) (entry, error) {
 // GetBoolean returns the boolean value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetBoolean(key string) (bool, error) {
-	e, err := cl.get(key)
+	e, err := cl.get(normalizeKey(key))
 	if err != nil {
 		return false, err
 	}
@@ -315,7 +315,7 @@ func (cl *Client) GetBoolean(key string) (bool, error) {
 // GetFloat64 returns the float64 value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetFloat64(key string) (float64, error) {
-	e, err := cl.get(key)
+	e, err := cl.get(normalizeKey(key))
 	if err != nil {
 		return 0, err
 	}
@@ -332,7 +332,7 @@ func (cl *Client) GetFloat64(key string) (float64, error) {
 // GetString returns the string value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetString(key string) (string, error) {
-	e, err := cl.get(key)
+	e, err := cl.get(normalizeKey(key))
 	if err != nil {
 		return "", err
 	}
@@ -346,9 +346,15 @@ func (cl *Client) GetString(key string) (string, error) {
 	return e.Value().(string), nil
 }
 
+// GetSubtable returns the subtable value associated with the
+// key. This method is safe to use from multiple goroutines.
+func (cl *Client) GetSubtable(key string) (Table, error) {
+	return &subtable{normalizeKey(key), cl}, nil
+}
+
 // put wraps the common functionality of the various put methods.
 func (cl *Client) put(key string, val interface{}, entryType byte) error {
-	e, err := cl.get(key)
+	e, err := cl.get(normalizeKey(key))
 	if err == ErrNoSuchKey {
 		err = nil
 		e, err = newEntry(key, clientRequestID, sequenceNumber(0), entryType)
@@ -390,4 +396,54 @@ func (cl *Client) PutFloat64(key string, val float64) error {
 // method is safe to use from multiple goroutines.
 func (cl *Client) PutString(key string, val string) error {
 	return cl.put(key, val, tString)
+}
+
+// subtable implements the table interface to provide a standard way
+// of accessing subtables, which are seperated by '/' just like unix
+// style file paths.
+type subtable struct {
+	prefix string
+	cl     *Client
+}
+
+func (st *subtable) GetBoolean(key string) (bool, error) {
+	return st.cl.GetBoolean(st.prefix + normalizeKey(key))
+}
+
+func (st *subtable) GetFloat64(key string) (float64, error) {
+	return st.cl.GetFloat64(st.prefix + normalizeKey(key))
+}
+
+func (st *subtable) GetString(key string) (string, error) {
+	return st.cl.GetString(st.prefix + normalizeKey(key))
+}
+
+func (st *subtable) GetSubtable(key string) (Table, error) {
+	return st.cl.GetSubtable(st.prefix + normalizeKey(key))
+}
+
+func (st *subtable) PutBoolean(key string, val bool) error {
+	return st.cl.PutBoolean(st.prefix+normalizeKey(key), val)
+}
+
+func (st *subtable) PutFloat64(key string, val float64) error {
+	return st.cl.PutFloat64(st.prefix+normalizeKey(key), val)
+}
+func (st *subtable) PutString(key string, val string) error {
+	return st.cl.PutString(st.prefix+normalizeKey(key), val)
+}
+
+// Seperator between tables and subtables.
+const TableSeperator = "/"
+
+// Normalizes all keys to begin with the TableSeperator and end
+// without one. This allows keys to be safely appended for subtables.
+func normalizeKey(key string) string {
+	if string(key[0]) != TableSeperator {
+		key = TableSeperator + key
+	}
+	if string(key[len(key)-1]) == TableSeperator {
+		key = key[:len(key)-1]
+	}
+	return key
 }

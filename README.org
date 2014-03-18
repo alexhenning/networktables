@@ -18,7 +18,6 @@ To run the provided main server existing
 : $ go run main-server/server.go
 
 * Limitations
-- Client doesn't support subtables
 - Client and Server don't support array types
 - Client doesn't support listeners
 - Minimal testing
