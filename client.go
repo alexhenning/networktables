@@ -282,68 +282,55 @@ func (cl *Client) write(b []byte) (int, error) {
 	return cl.conn.Write(b)
 }
 
-// get gets the entry associated with the key if the hello finished
+// entry gets the entry associated with the key if the hello finished
 // command has been received and an entry with the key exists.
-func (cl *Client) get(key string) (entry, error) {
+func (cl *Client) entry(key string) (entry, error) {
 	if cl.state != connected {
 		return nil, ErrHelloNotDone
 	}
-	e, ok := cl.entriesByName[key]
+	e, ok := cl.entriesByName[normalizeKey(key)]
 	if !ok {
 		return nil, ErrNoSuchKey
 	}
 	return e, nil
 }
 
-// GetBoolean returns the boolean value associated with the key if
-// possible. This method is safe to use from multiple goroutines.
-func (cl *Client) GetBoolean(key string) (bool, error) {
-	e, err := cl.get(normalizeKey(key))
+// get gets the value of the entry associated with the key if the
+// hello finished command has been received and an entry with the
+// key exists, otherwise it returns the default value.
+func (cl *Client) get(key string, defaultVal interface{}, entryType byte) (interface{}, error) {
+	e, err := cl.entry(key)
 	if err != nil {
-		return false, err
+		return defaultVal, err
 	}
 	e.Lock()
 	defer e.Unlock()
 
-	if e.Type() != tBoolean {
-		return false, ErrWrongType
+	if e.Type() != entryType {
+		return defaultVal, ErrWrongType
 	}
+	return e.Value(), nil
+}
 
-	return e.Value().(bool), nil
+// GetBoolean returns the boolean value associated with the key if
+// possible. This method is safe to use from multiple goroutines.
+func (cl *Client) GetBoolean(key string) (bool, error) {
+	val, err := cl.get(key, false, tBoolean)
+	return val.(bool), err
 }
 
 // GetFloat64 returns the float64 value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetFloat64(key string) (float64, error) {
-	e, err := cl.get(normalizeKey(key))
-	if err != nil {
-		return 0, err
-	}
-	e.Lock()
-	defer e.Unlock()
-
-	if e.Type() != tDouble {
-		return 0, ErrWrongType
-	}
-
-	return e.Value().(float64), nil
+	val, err := cl.get(key, float64(0), tDouble)
+	return val.(float64), err
 }
 
 // GetString returns the string value associated with the key if
 // possible. This method is safe to use from multiple goroutines.
 func (cl *Client) GetString(key string) (string, error) {
-	e, err := cl.get(normalizeKey(key))
-	if err != nil {
-		return "", err
-	}
-	e.Lock()
-	defer e.Unlock()
-
-	if e.Type() != tString {
-		return "", ErrWrongType
-	}
-
-	return e.Value().(string), nil
+	val, err := cl.get(key, "", tString)
+	return val.(string), err
 }
 
 // GetSubtable returns the subtable value associated with the
@@ -354,7 +341,7 @@ func (cl *Client) GetSubtable(key string) (Table, error) {
 
 // put wraps the common functionality of the various put methods.
 func (cl *Client) put(key string, val interface{}, entryType byte) error {
-	e, err := cl.get(normalizeKey(key))
+	e, err := cl.entry(normalizeKey(key))
 	if err == ErrNoSuchKey {
 		err = nil
 		e, err = newEntry(normalizeKey(key), clientRequestID, sequenceNumber(0), entryType)
