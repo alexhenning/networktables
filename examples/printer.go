@@ -8,7 +8,7 @@ import (
 
 func main() {
 	log.Println("Starting NetworkTables client...")
-	client := networktables.NewClient(":1735", true)
+	client := networktables.ConnectAndListen(":1735")
 	tick := time.Tick(time.Duration(1 * time.Second))
 	sd, _ := client.GetSubtable("SmartDashboard")
 	for {

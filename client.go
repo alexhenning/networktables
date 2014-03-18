@@ -12,6 +12,32 @@ import (
 	"time"
 )
 
+// ConnectAndListen connects to the TCP network address addr and then
+// listens to the server for updates to the table value. This function
+// returns a client which can be used to put and get values to the
+// table. The default port for a server should be :1735
+//
+// A trivial example client is:
+//
+//	package main
+//
+//	import ("log"; "time"; "github.com/alexhenning/networktables")
+//
+//	func main() {
+//	    networktables.ConnectAndListen(":1735")
+//      time.Sleep(time.Duration(100 * time.Millisecond))
+//		b, err := client.GetBoolean("bool")
+//		if err != nil {
+//			log.Println(err)
+//		}
+//      log.Printf("%t\n", b)
+//	}
+func ConnectAndListen(addr string) *Client {
+	cl := NewClient(addr)
+	go cl.ConnectAndListen()
+	return cl
+}
+
 // Table is an interface that allows getting values out of
 // NetworkTables and Subtables in a consistent way.
 type Table interface {
@@ -49,17 +75,13 @@ type Client struct {
 
 // NewServer creates a new server object that can be used to listen
 // and serve clients connected to the given address.
-func NewClient(addr string, listen bool) *Client {
-	cl := &Client{
+func NewClient(addr string) *Client {
+	return &Client{
 		addr:          addr,
 		entriesByName: make(map[string]entry),
 		entriesByID:   make(map[uint16]entry),
 		toSend:        make(map[string]entry),
 	}
-	if listen {
-		go cl.ConnectAndListen()
-	}
-	return cl
 }
 
 // ConnectAndListen connects to the NetworkTable server at cl.addr and
