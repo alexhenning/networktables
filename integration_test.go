@@ -45,36 +45,42 @@ func TestSingleClient(t *testing.T) {
 	server, client := NewServer(testAddr), NewClient(testAddr, false)
 	go server.ListenAndServe()
 	go client.ConnectAndListen()
-	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
 
+	assertGet(t, client, false, 0, "", "ErrHelloNotDone", ErrHelloNotDone)
+	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
 	// Check that keys don't exist
 	assertGet(t, client, false, 0, "", "ErrNoSuchKey", ErrNoSuchKey)
 
-	// Set initial values for keys
+	// Set initial values and check that they propogate after 100ms
 	assertPut(t, client, true, 42.42, "NetworkTables Rocks!", "nil", nil)
-
 	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
-
-	// Check for actual values
 	assertGet(t, client, true, 42.42, "NetworkTables Rocks!", "nil", nil)
+
+	// Set second set of values and check that updates propogate after 100ms
+	assertPut(t, client, false, 8080, "NT exists!", "nil", nil)
+	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
+	assertGet(t, client, false, 8080, "NT exists!", "nil", nil)
 }
 
 func TestSingleClientSubtable(t *testing.T) {
 	server, client := NewServer(testAddr), NewClient(testAddr, false)
 	go server.ListenAndServe()
 	go client.ConnectAndListen()
-	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
 	sd, err := client.GetSubtable("SmartDashboard")
 	assertExpectedError(t, "nil", nil, err, "for key '/SmartDashboard'")
 
+	assertGet(t, sd, false, 0, "", "ErrHelloNotDone", ErrHelloNotDone)
+	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
 	// Check that keys don't exist
 	assertGet(t, sd, false, 0, "", "ErrNoSuchKey", ErrNoSuchKey)
 
-	// Set initial values for keys
+	// Set initial values and check that they propogate after 100ms
 	assertPut(t, sd, true, 42.42, "NetworkTables Rocks!", "nil", nil)
-
 	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
-
-	// Check for actual values
 	assertGet(t, sd, true, 42.42, "NetworkTables Rocks!", "nil", nil)
+
+	// Set second set of values and check that updates propogate after 100ms
+	assertPut(t, sd, false, 8080, "NT exists!", "nil", nil)
+	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
+	assertGet(t, sd, false, 8080, "NT exists!", "nil", nil)
 }
