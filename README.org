@@ -1,24 +1,22 @@
 * Introduction
-Package networktables provides a server implementation of the FRC
-NetworkTables 2.0 protocol.
+Package networktables provides a server and client implementation of
+the FRC NetworkTables 2.0 protocol.
 
 The main project with support for Java and C++ is located at [[https://usfirst.collab.net/sf/projects/networktables/]]
 
 A pdf of the protocol specification is available at [[https://usfirst.collab.net/sf/docman/do/downloadDocument/projects.networktables/docman.root/doc1001/1]]
 
-API documentation is available on g[[http://godoc.org/github.com/alexhenning/networktables][godoc.org]].
+API documentation is available on [[http://godoc.org/github.com/alexhenning/networktables][godoc.org]].
 
 * Usage
 Starting a server in a Go program is as easy as:
-: include "github.com/alexhenning/networktables"
 : networktables.ListenAndServe(":1735")
 
-To run the provided main server existing 
-: $ cd $GOPATH/src/github.com/alexhenning/networktables
-: $ go run main-server/server.go
+To run the provided NetworkTable server
+: $ go install github.com/alexhenning/networktables/ntserver
+: $ ntserver
 
 * Limitations
 - Client and Server don't support array types
 - Client doesn't support listeners
-- Minimal testing
 - Server can't act as clients
