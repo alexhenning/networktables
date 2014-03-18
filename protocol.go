@@ -57,6 +57,12 @@ var (
 	ErrHelloNotDone = errors.New("networktables: server has not finished sending hello to client")
 )
 
+// Other errors that can occur
+var (
+	ErrConnectionNotOpen    = errors.New("networktables: cannot close a connection that is not open")
+	ErrUserClosedConnection = errors.New("networktables: user has closed connection")
+)
+
 // helloMessage returns the bytes to send for the hello
 // message of the given version.
 func helloMessage(version uint16) []byte {

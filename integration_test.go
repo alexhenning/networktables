@@ -8,33 +8,37 @@ import (
 const testAddr = ":11735"
 
 func TestSingleClient(t *testing.T) {
-	server, client := NewServer(testAddr), NewClient(testAddr)
-	go server.ListenAndServe()
-	go client.ConnectAndListen()
-
+	go ListenAndServe(testAddr)
+	client := ConnectAndListen(testAddr)
 	testTable(t, client)
 }
 
 func TestSingleClientSubtable(t *testing.T) {
-	server, client := NewServer(testAddr), NewClient(testAddr)
-	go server.ListenAndServe()
-	go client.ConnectAndListen()
+	go ListenAndServe(testAddr)
+	client := ConnectAndListen(testAddr)
 	sd, err := client.GetSubtable("SmartDashboard")
 	assertExpectedError(t, "nil", nil, err, "for key '/SmartDashboard'")
-
 	testTable(t, sd)
 }
 
 func TestSingleClientSubSubtable(t *testing.T) {
-	server, client := NewServer(testAddr), NewClient(testAddr)
-	go server.ListenAndServe()
-	go client.ConnectAndListen()
+	go ListenAndServe(testAddr)
+	client := ConnectAndListen(testAddr)
 	sd, err := client.GetSubtable("SmartDashboard")
 	assertExpectedError(t, "nil", nil, err, "for key '/SmartDashboard'")
 	tbl, err := sd.GetSubtable("test")
 	assertExpectedError(t, "nil", nil, err, "for key '/SmartDashboard/test'")
-
 	testTable(t, tbl)
+}
+
+func TestSingleDisconnecting(t *testing.T) {
+	go ListenAndServe(testAddr)
+	client := ConnectAndListen(testAddr)
+	<-time.After(20 * time.Millisecond) // Note: relying on time for synchronization is sketchy
+	err := client.Close()
+	assertExpectedError(t, "nil", nil, err, "closing client connection")
+	<-time.After(1500 * time.Millisecond) // Note: relying on time for synchronization is sketchy
+	// TODO: Validate that connection closes
 }
 
 func testTable(t *testing.T, tbl Table) {

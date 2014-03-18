@@ -67,6 +67,7 @@ type Client struct {
 	entriesByName map[string]entry
 	entriesByID   map[uint16]entry
 	toSend        map[string]entry
+	done          chan error
 	state         state
 	conn          net.Conn
 	writeM        sync.Mutex
@@ -101,17 +102,19 @@ func (cl *Client) ConnectAndListen() error {
 		return err
 	}
 
-	done, c := make(chan error), make(chan byte)
-	defer close(done)
+	c := make(chan byte)
+	cl.done = make(chan error, 10)
+	defer func() { cl.done = nil }()
 	defer close(c)
-	go cl.processBytes(done, c)
+	go cl.processBytes(cl.done, c)
 
 	ticks, kaTicks := time.Tick(20*time.Millisecond), time.Tick(time.Second)
-	go cl.sendUpdates(done, ticks)
-	go cl.sendKeepAlives(done, kaTicks)
+	go cl.sendUpdates(cl.done, ticks)
+	go cl.sendKeepAlives(cl.done, kaTicks)
 
 	for {
 		data := make([]byte, 2048)
+		conn.SetReadDeadline(time.Now().Add(time.Duration(time.Second)))
 		n, err := conn.Read(data)
 		if err != nil {
 			log.Printf("networktables: %s\n", err)
@@ -120,7 +123,7 @@ func (cl *Client) ConnectAndListen() error {
 		for i := 0; i < n; i++ {
 			select {
 			case c <- data[i]:
-			case err := <-done:
+			case err := <-cl.done:
 				if err != nil {
 					log.Println(err)
 				}
@@ -128,6 +131,15 @@ func (cl *Client) ConnectAndListen() error {
 			}
 		}
 	}
+}
+
+// Close closes the clients connection to the server.
+func (cl *Client) Close() error {
+	if cl.done == nil {
+		return ErrConnectionNotOpen
+	}
+	cl.done <- ErrUserClosedConnection
+	return nil
 }
 
 // hello sends the hello message for the implemented version.
