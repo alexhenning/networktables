@@ -339,7 +339,7 @@ func (cl *Client) GetString(key string) (string, error) {
 	e.Lock()
 	defer e.Unlock()
 
-	if e.Type() != tDouble {
+	if e.Type() != tString {
 		return "", ErrWrongType
 	}
 
@@ -357,7 +357,7 @@ func (cl *Client) put(key string, val interface{}, entryType byte) error {
 	e, err := cl.get(normalizeKey(key))
 	if err == ErrNoSuchKey {
 		err = nil
-		e, err = newEntry(key, clientRequestID, sequenceNumber(0), entryType)
+		e, err = newEntry(normalizeKey(key), clientRequestID, sequenceNumber(0), entryType)
 		e.SetValue(val)
 		cl.assignEntry(e)
 		return err
@@ -433,16 +433,16 @@ func (st *subtable) PutString(key string, val string) error {
 	return st.cl.PutString(st.prefix+normalizeKey(key), val)
 }
 
-// Seperator between tables and subtables.
-const TableSeperator = "/"
+// Separator between tables and subtables.
+const TableSeparator = "/"
 
 // Normalizes all keys to begin with the TableSeperator and end
 // without one. This allows keys to be safely appended for subtables.
 func normalizeKey(key string) string {
-	if string(key[0]) != TableSeperator {
-		key = TableSeperator + key
+	if string(key[0]) != TableSeparator {
+		key = TableSeparator + key
 	}
-	if string(key[len(key)-1]) == TableSeperator {
+	if string(key[len(key)-1]) == TableSeparator {
 		key = key[:len(key)-1]
 	}
 	return key
