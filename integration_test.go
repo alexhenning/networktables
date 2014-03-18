@@ -54,3 +54,41 @@ func TestSingleClient(t *testing.T) {
 	assertExpectedError(t, "nil", nil, err, "for key '/str'")
 	assertExpectedValue(t, "NetworkTables Rocks!", s, "for key '/str'")
 }
+
+func TestSingleClientSubtable(t *testing.T) {
+	server, client := NewServer(testAddr), NewClient(testAddr, false)
+	go server.ListenAndServe()
+	go client.ConnectAndListen()
+	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
+	sd, err := client.GetSubtable("SmartDashboard")
+	assertExpectedError(t, "nil", nil, err, "for key '/SmartDashboard'")
+
+	// Check that keys don't exist
+	_, err = sd.GetBoolean("bool")
+	assertExpectedError(t, "ErrNoSuchKey", ErrNoSuchKey, err, "for key '/bool'")
+	_, err = sd.GetFloat64("float")
+	assertExpectedError(t, "ErrNoSuchKey", ErrNoSuchKey, err, "for key '/float'")
+	_, err = sd.GetString("str")
+	assertExpectedError(t, "ErrNoSuchKey", ErrNoSuchKey, err, "for key '/str'")
+
+	// Set initial values for keys
+	err = sd.PutBoolean("bool", true)
+	assertExpectedError(t, "nil", nil, err, "for key '/bool'")
+	err = sd.PutFloat64("float", 42.42)
+	assertExpectedError(t, "nil", nil, err, "for key '/float'")
+	err = sd.PutString("str", "NetworkTables Rocks!")
+	assertExpectedError(t, "nil", nil, err, "for key '/str'")
+
+	<-time.After(100 * time.Millisecond) // Note: relying on time for synchronization is sketchy
+
+	// Check for actual values
+	b, err := sd.GetBoolean("bool")
+	assertExpectedError(t, "nil", nil, err, "for key '/bool'")
+	assertExpectedValue(t, true, b, "for key '/bool'")
+	f, err := sd.GetFloat64("float")
+	assertExpectedError(t, "nil", nil, err, "for key '/float'")
+	assertExpectedValue(t, 42.42, f, "for key '/float'")
+	s, err := sd.GetString("str")
+	assertExpectedError(t, "nil", nil, err, "for key '/str'")
+	assertExpectedValue(t, "NetworkTables Rocks!", s, "for key '/str'")
+}
