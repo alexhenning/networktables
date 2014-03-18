@@ -79,10 +79,6 @@ func (e *baseEntry) Type() byte {
 	return e.entryType
 }
 
-func (e *baseEntry) dataToBytes() []byte {
-	return []byte{}
-}
-
 // booleanEntry is an entry for a boolean value
 type booleanEntry struct {
 	baseEntry
