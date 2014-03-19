@@ -25,12 +25,12 @@ import (
 //
 //	func main() {
 //	    networktables.ConnectAndListen(":1735")
-//      time.Sleep(time.Duration(100 * time.Millisecond))
+//	    time.Sleep(time.Duration(100 * time.Millisecond))
 //		b, err := client.GetBoolean("bool")
 //		if err != nil {
 //			log.Println(err)
 //		}
-//      log.Printf("%t\n", b)
+// 	    log.Printf("%t\n", b)
 //	}
 func ConnectAndListen(addr string) *Client {
 	cl := NewClient(addr)
